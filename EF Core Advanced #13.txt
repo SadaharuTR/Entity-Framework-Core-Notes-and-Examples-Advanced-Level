@@ -1,0 +1,252 @@
+EF Core'da SQL Queries
+
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Reflection;
+using System.Reflection.Emit;
+
+ApplicationDbContext context = new();
+
+//Eğer ki, sorgunuzu LINQ ile ifade edemiyorsanız yahut LINQ'in ürettiği sorguya nazaran daha optimize
+//bir sorguyu manuel geliştirmek ve EF Core üzerinden execute etmek istiyorsanız EF Core'un bu
+//davranışı desteklediğini bilmeliyiz.
+
+//Manuel bir şekilde/tarafımızca oluşturulmuş olan sorguları EF Core tarafından execute edebilmek için
+//o sorgunun sonucunu karşılayacak bir entity model'ın tasarlanmış ve bunun DbSet olarak context
+//nesnesine tanımlanmış olması gerekiyor.
+
+#region FromSqlInterpolated
+//EF Core 7.0 sürümünden önce ham sorguları execute edebildiğimiz fonksiyondur.
+//$ string interpolation ifadesi ile vermeyi unutmayalım. Yoksa hata verir.
+/*
+var persons = await context.Persons.FromSqlInterpolated($"SELECT * FROM Persons")
+    .ToListAsync();
+*/
+#endregion
+
+#region FromSql - EF Core 7.0
+//EF Core 7.0 ile gelen metottur. FromSqlInterpolated ile aynı işlemi yapar.
+
+#region Query Execute
+//$ string interpolation ifadesi ile vermeyi unutmayalım. Yoksa hata verir.
+/*
+var persons = await context.Persons.FromSql($"SELECT * FROM Persons")
+    .ToListAsync();
+*/
+#endregion
+
+#region Stored Procedure Execute
+/*
+//tüm verileri getirir.
+var persons = await context.Persons.FromSql($"EXECUTE dbo.sp_GetAllPersons NULL")
+    .ToListAsync();
+//4 Id'sine sahip Person'u getirir.
+var persons2 = await context.Persons.FromSql($"EXECUTE dbo.sp_GetAllPersons 4")
+    .ToListAsync();
+*/
+#endregion
+
+#region Parametreli Sorgu Oluşturma
+//bizler SQL cümleciklerini menuel bir şekilde yazacağız fakat bu cümlecikler dışarıdan-kod üzerinde
+//o anda runtime'da oluşturulan verileri üzerinden parametre değerlerini veritabanına göndermek istiyor
+//olabilir. Bu değerleri mecburen sorguya işlemek zorundayız.
+
+#region Örnek 1
+/*
+int personId = 3;
+var persons = await context.Persons.FromSql($"SELECT * FROM Persons Where PersonId = {personId}")
+    .ToListAsync();
+Console.WriteLine("");
+*/
+//Burada sorguya geçirilen personId değişkeni arka planda bir DbParameter türüne dönüştürülerek
+//o şekilde sorguya dahil edilmektedir.
+#endregion
+
+#region Örnek 2
+//Aynı işlemi Stored Procedure'da gerçekleştirelim.
+/*
+int personId = 3;
+var persons = await context.Persons.FromSql($"EXECUTE dbo.sp_GetAllPersons {personId}")
+    .ToListAsync();
+*/
+#endregion
+
+#region Örnek 3
+//Fakat parametreleri değer türünde tanımlamamak daha iyidir. Daha performanslıdır.
+//EF Core bu parametreleri SqlParameter olarak tanımlamamızı önerir.
+//Yani DbParameter (SqlParameter'ın base class'ı) olarak Sql cümleciklerinindeki parametreleri tasarlamamız
+//önerilmektedir.
+/*
+SqlParameter personId = new("PersonId", "3");
+//SqlParameter olarak tanımlanan yapılanmada biz ilgili parametrenin detaylarını konfigüre edebiliriz
+personId.DbType = System.Data.DbType.Int32; //DbType kesinlikle integer olsun.
+personId.Direction = System.Data.ParameterDirection.Input; //Input olarak alınsın.
+//sorguya geçireciğimiz parametrenin detaylarını SqlParameter türünden bir nesne ile belirtip
+//bunu da sorguya direkt gönderebiliriz.
+var persons = await context.Persons.FromSql($"SELECT * FROM Persons Where PersonId = {personId}")
+    .ToListAsync();
+*/
+#endregion
+
+#region Örnek 4
+//Stored Procedure'da da aynı işlemi yapabiliriz.
+/*
+SqlParameter personId = new("PersonId", "3");
+var persons = await context.Persons.FromSql($"EXECUTE dbo.sp_GetAllPersons {personId}")
+   .ToListAsync();
+*/
+#endregion
+
+#region Örnek 5
+//Kompleks çalışmalarda, SP'nin birden fazla parametre aldığı durumlar gibi, hangi parametreye hangi
+//değeri gönderdiğimiz net bir şekilde anlaşılmayabilir. Performanslı ve görsel olarak daha şık bir
+//çalışma ile bu durum çözülebilir.
+//@PersonId ile SP'in beklemiş olduğu fiziksel parametrenin adını yazıyoruz.
+/*
+SqlParameter personId = new("a", "3"); 
+//parametremizin ismi a bile olsa sorgu çalışır. Çünkü buradaki PersonId arka plandakidir.
+var persons = await context.Persons.FromSql($"EXECUTE dbo.sp_GetAllPersons @PersonId = {personId}")
+    .ToListAsync();
+*/
+#endregion
+#endregion
+#endregion
+
+#region Dynamic SQL Oluşturma ve Parametre Girme - FromSqlRaw
+//Bizler her zaman sorgularımızı direkt oluşturamayız. Bazı çalışmalarda sorguları yazılım üzerinden
+//üretmemiz gerekebilir.
+/*
+string columnName = "PersonId", value = "3";
+var persons = await context.Persons.FromSql($"Select * From Persons Where {columnName} = {value}")
+    .ToListAsync();
+//EF Core dinamik olarak oluşturulan sorgularda özellikle kolon isimleri parametreleştirilmişse
+//o sorguyu ÇALIŞTIRMAYACAKTIR!
+*/
+
+//Sorguyu çalıştırabilmek için;
+/*
+string columnName = "PersonId"; //columnName'i aldıktan sonra value'yu
+SqlParameter value = new("PersonId", "3"); //string olarak değil SqlParameter nesnesi olarak vereceğiz.
+//burada oluşturduğumuz value bir parametreye karşılık bir değer olacaktır.
+var persons = await context.Persons.FromSqlRaw($"Select * From Persons Where {columnName} = @PersonId", value)
+    .ToListAsync(); //buradaki @PersonId, SqlParameter value = new("PersonId", "3");'dakidir.
+*/
+//@bilmemneId yazdıysak SqlParameter value = new("bilmemneId", "3"); yazmamız gerek.
+//bu parametreye değerini de value ile vereceğiz. valur bir SqlParameter olduğu için içerisindeki
+//parametrenin ismi neyse PersonId sorguda eşleştirilecek ve konumuna değerini yazdırmış olacaktır.
+
+//Dinamik olarak oluşturmuş olduğumuz sorgularda kolon isimlerini paramatre olarak alıyorsak
+//FromSqlRaw kullanmalıyız.
+
+//FromSql ve FromSqlInterpolated metotlarında SQL Injection vs. gibi güvenlik önlemleri alınmış
+//vaziyettedir. Lakin dinamik olarak sorguları oluşturuyorsanız eğer burada güvenlik geliştirici
+//sorumludur. Yani gelen sorguda/veri yorumlar, noktalı virgüller yahut SQL'e özel karakterlerin
+//algılanması ve bunların temizlenmesi geliştirici tarafından gerekmektedir.
+#endregion
+
+#region SqlQuery - Entiy Olmayan Scalar Sorguların Çalıştırılması - Non Entity - EF Core 7.0
+
+//Entity'si olmayan scalar sorguların çalıştırılıp sonucunu elde etmemizi sağlayan yeni bir fonksiyondur.
+//gelecek olan tekil kolonun türünü generic olarak belirt.
+/*
+var data = await context.Database.SqlQuery<int>($"SELECT PersonId FROM Persons")
+    .ToListAsync();
+*/
+/*
+var persons = await context.Persons.FromSql($"SELECT * FROM Persons")
+    .Where(p => p.Name.Contains("a")) //Linq ile where şartı ekleyerek sorguya katkıda bulunduk.
+    .ToListAsync();
+*/
+
+//SqlQuery ile kullanırken dikkat!
+/*
+var data = await context.Database.SqlQuery<int>($"SELECT PersonId Value FROM Persons")
+    .Where(x => x > 5)
+    .ToListAsync();
+*/
+//SqlQuery'de LINQ operatörleriyle sorguya ekstradan katkıda bulunmak istiyorsanız eğer bu sorgu
+//neticesinde gelecek olan kolonun adını Value olarak bildirmeniz gerekmektedir. Çünkü, SqlQuery metodu
+//sorguyu bir subquery olarak generate etmektedir. Haliyle bu durumdan dolayı LINQ ile verilen şart
+//ifadeleri statik olarak Value kolonuna göre tasarlanmıştır. O yüzden bu şekilde bir çalışma zorunlu
+//gerekmektedir.
+
+#endregion
+
+#region ExecuteSql
+
+//Insert, update, delete
+//await context.Database.ExecuteSqlAsync($"Update Persons SET Name = 'Fatma' WHERE PersonId = 1");
+//SaveChanges'ı çağırmak zorunda değiliz.
+#endregion
+
+#region Sınırlılıklar
+
+//Queryler entity türünün tüm özellikleri için kolonlarda değer döndürmelidir.
+//Query'de hangi entity'de çalışıyorsak ona uygun tüm propertylerine karşılık değerleri select
+//ile döndürmemiz gerek.
+/*
+var persons = await context.Persons.FromSql($"SELECT Name, PersonId FROM Persons")
+    .ToListAsync();
+*/
+
+//Sütun isimleri property isimleriyle aynı olmalıdır.
+
+//SQL Sorgusu Join yapısı İÇEREMEZ!!! Haliyle bu tarz ihtiyaç noktalarında Include fonksiyonu
+//KULLANILMALIDIR!
+//Aşağıdaki kod patlar.
+//var persons = await context.Persons.FromSql($"SELECT * FROM Persons JOIN Orders ON Persons.PersonId = Orders.PersonId").ToListAsync();
+/*
+var persons = await context.Persons.FromSql($"SELECT * FROM Persons")
+    .Include(p => p.Orders)
+    .ToListAsync();
+*/
+#endregion
+Console.WriteLine();
+public class Person
+{
+    public int PersonId { get; set; }
+    public string Name { get; set; }
+
+    public ICollection<Order> Orders { get; set; }
+}
+public class Order
+{
+    public int OrderId { get; set; }
+    public int PersonId { get; set; }
+    public string Description { get; set; }
+
+    public Person Person { get; set; }
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Person> Persons { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        modelBuilder.Entity<Person>()
+            .HasMany(p => p.Orders)
+            .WithOne(o => o.Person)
+            .HasForeignKey(o => o.PersonId);
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server = PC\\SQLEXPRESS; Database = ApplicationDb; User ID = SA; Password = 1; TrustServerCertificate = True");
+    }
+}
+
+//SQL tarafında aşağıdaki SP'i oluşturmuş olalım.
+//CREATE PROC sp_GetAllPersons
+//(
+//	@PersonId INT NULL
+//)AS
+//BEGIN
+//	IF @PersonId IS NULL
+//		SELECT * FROM Persons
+//	ELSE
+//		SELECT * FROM Persons WHERE PersonId = @PersonId
+//END

@@ -1,0 +1,215 @@
+EF Core'da Scalar ve Inline Fonksiyonlar
+
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Reflection;
+using System.Reflection.Emit;
+
+ApplicationDbContext context = new();
+
+#region Scalar Functions Nedir?
+//Geriye herhangi bir türde değer döndüren fonksiyonlardır.
+#endregion
+
+#region Scalar Function Oluşturma
+//1. adım : Boş bir migration oluşturulmalı.
+//2. adım : Bu migration içerisinde Up metodunda Sql metodu eşliğinde fonksiyonun Create kodları yazılacak, Down metodu içerisinde de Drop kodları yazılacaktır.
+//3. adım : Migrate edilmeli.
+#endregion
+#region Scalar Function'ı EF Core'a Entegre Etme
+//HasDbFunction ile sağlarız.
+//Bir Scalar Function'u EF Core üzerinde fonksiyon olarak temsil edebilmek için ilgili fonksiyonu Context içinde temsil edecek bir imza oluşturmamız lazım.
+
+#region HasDbFunction
+//Veritabanı seviyesindeki herhangi bir fonksiyonu EF Core/yazılım kısmında bir metoda bind etmemizi sağlayan fonksiyondur.
+#endregion
+
+//Toplam satış fiyatının miktarı 500'den büyük olan personelleri elde edelim.
+//Toplam satış bilgisi dönüp where şartı ile kontrol edilecek.
+/*
+var persons = await (from person in context.Persons
+                     where context.GetPersonTotalOrderPrice(person.PersonId) > 500
+                     select person).ToListAsync();
+*/
+//Console.WriteLine();
+#endregion
+
+#region Inline Functions Nedir?
+//Geriye bir değer değil, tablo döndüren fonksiyonlardır.
+#endregion
+
+#region Inline Function Oluşturma
+//1. adım : Boş bir migration oluşturunuz.
+//2. adım : Bu migration içerisindeki Up fonksiyonunda Create işlemini,  Down fonksiyonunda ise Drop işlemlerini gerçekleştiriniz.
+//3. adım : Migrate ediniz.
+#endregion
+
+#region Inline Function'ı EF Core'a Entegre Etme
+var persons = await context.BestSellingStaff().ToListAsync();
+/*
+var persons = await context.BestSellingStaff(3000).ToListAsync();
+foreach (var person in persons)
+{
+    Console.WriteLine($"Name : {person.Name} | Order Count : {person.OrderCount} | Total Order Price : {person.TotalOrderPrice}");
+}
+*/
+#endregion
+Console.WriteLine();
+public class Person
+{
+    public int PersonId { get; set; }
+    public string Name { get; set; }
+
+    public ICollection<Order> Orders { get; set; }
+}
+public class Order
+{
+    public int OrderId { get; set; }
+    public int PersonId { get; set; }
+    public string Description { get; set; }
+    public int Price { get; set; }
+
+    public Person Person { get; set; }
+}
+
+public class BestSellingStaff
+//oluşturmuş olduğumuz inline function'u execute ettiğimizde bu BestSellingStaff modeli üzerinden verilerini karşılayacağız.
+{
+    public string Name { get; set; }
+    public int OrderCount { get; set; }
+    public int TotalOrderPrice { get; set; }
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Person> Persons { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        #region Scalar
+        //modelBuilder üzerinden HasDbFunction metodunu çağırarak veritabanınmızdaki fonksiyon ile imza arasında bir binding işlemi gerçekleştireceğiz.
+        //typeof ile ApplicationDbContext içerisinde giriyoruz. Ardından GetMethod fonksiyonunu kullanarak imzadaki metodun ismini yine nameof ile
+        //"ApplicationDbContext içerisindeki GetPersonTotalOrderPrice member'ı" olarak bildireceğiz.
+        //Metodun içerisindeki parametreyi de dizi tanımlayıp typeof int türünde bir parametresi olacağını belirtiyoruz.
+        modelBuilder.HasDbFunction(typeof(ApplicationDbContext).GetMethod(nameof(ApplicationDbContext.GetPersonTotalOrderPrice), new[] { typeof(int) }))
+            //yukarıda tanımlamış olduğumuz metotla veritabanındaki arasında .HasName eşliğinde bir binding işlemi gerçekleştireceğimizi belirtiyoruz.
+            .HasName("getPersonTotalOrderPrice");
+        //Artık veritabanımızdaki fonksiyonu GetPersonTotalOrderPrice isimli muadil fonksiyonla temsil edebileceğiz.
+        #endregion
+
+        #region Inline
+        //Aynı şekilde Scalar'daki işlemleri yapıyoruz.
+        modelBuilder.HasDbFunction(typeof(ApplicationDbContext).GetMethod(nameof(ApplicationDbContext.BestSellingStaff), new[] { typeof(int) }))
+            .HasName("bestSellingStaff");
+
+        modelBuilder.Entity<BestSellingStaff>()
+            .HasNoKey();
+       
+        #endregion
+
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        modelBuilder.Entity<Person>()
+            .HasMany(p => p.Orders)
+            .WithOne(o => o.Person)
+            .HasForeignKey(o => o.PersonId);
+    }
+
+    #region Scalar Functions
+    //İmza oluşturma.
+    public int GetPersonTotalOrderPrice(int personId) //veritabanındaki fonksiyonu temsil edecek bir imza oluşturduk. Bundan sonra OnModelCreating'de...
+        => throw new Exception();
+
+    #endregion
+
+    #region Inline Functions
+    //Inline function'larda imza.
+    //Tablo elde edeceğimiz için IQueryable'da çalışmamız daha doğru.
+    //FromExpression: Ana kullanım amacı queryable fonksiyonu table-value fonksiyona çevirmektir.
+    public IQueryable<BestSellingStaff> BestSellingStaff(int totalOrderPrice = 10000)
+         => FromExpression(() => BestSellingStaff(totalOrderPrice));
+    #endregion
+    
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server = PC\\SQLEXPRESS; Database = ApplicationDb; User ID = SA; Password = 1; TrustServerCertificate = True");
+    }
+}
+
+----------------
+
+mig_2
+
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace ScalarAndInlineFunctions.Migrations
+{
+    /// <inheritdoc />
+    public partial class mig2 : Migration
+    {
+        /// <inheritdoc />
+        /// Id'sini vermiş olduğumuz personelin yapmış olduğu satışların toplam fiyat bilgisini dönen bir fonksiyon.
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.Sql($@"
+                        CREATE FUNCTION getPersonTotalOrderPrice(@personId INT)
+	                        RETURNS INT
+                        AS
+                        BEGIN
+	                        DECLARE @totalPrice INT
+	                        SELECT @totalPrice = SUM(o.Price) FROM Persons p
+	                        JOIN Orders o
+		                        ON p.PersonId = o.PersonId
+	                        WHERE p.PersonId = @personId
+	                        RETURN @totalPrice
+                        END");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.Sql($@"DROP FUNCTION getPersonTotalOrderPrice");
+        }
+    }
+}
+
+-----------------
+
+mig_3
+
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace ScalarAndInlineFunctions.Migrations
+{
+    /// <inheritdoc />
+    public partial class mig3 : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.Sql($@"
+                        CREATE FUNCTION bestSellingStaff(@totalOrderPrice INT = 10000)
+	                        RETURNS TABLE
+                        AS
+                        RETURN
+                        SELECT TOP 1 p.Name, COUNT(*) OrderCount, SUM(o.Price) TotalOrderPrice FROM Persons p
+                        JOIN Orders o
+	                        ON p.PersonId = o.PersonId 
+                        GROUP By p.Name
+                        HAVING SUM(o.Price) < @totalOrderPrice
+                        ORDER By OrderCount DESC");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.Sql($@"DROP FUNCTION bestSellingStaff");
+        }
+    }
+}

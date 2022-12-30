@@ -1,0 +1,51 @@
+warn: 26.12.2022 06:06:31.539 CoreEventId.SensitiveDataLoggingEnabledWarning[10400] (Microsoft.EntityFrameworkCore.Infrastructure) 
+      Sensitive data logging is enabled. Log entries and exception messages may include sensitive application data; this mode should only be enabled during development.
+dbug: 26.12.2022 06:06:31.783 CoreEventId.ContextInitialized[10403] (Microsoft.EntityFrameworkCore.Infrastructure) 
+      Entity Framework Core 7.0.1 initialized 'ApplicationDbContext' using provider 'Microsoft.EntityFrameworkCore.SqlServer:7.0.1' with options: SensitiveDataLoggingEnabled DetailedErrorsEnabled 
+dbug: 26.12.2022 06:06:31.851 CoreEventId.QueryCompilationStarting[10111] (Microsoft.EntityFrameworkCore.Query) 
+      Compiling query expression: 
+      'DbSet<Person>()'
+dbug: 26.12.2022 06:06:32.023 CoreEventId.QueryExecutionPlanned[10107] (Microsoft.EntityFrameworkCore.Query) 
+      Generated query execution expression: 
+      'queryContext => new SingleQueryingEnumerable<Person>(
+          (RelationalQueryContext)queryContext, 
+          RelationalCommandCache.QueryExpression(
+              Projection Mapping:
+                  EmptyProjectionMember -> Dictionary<IProperty, int> { [Property: Person.PersonId (int) Required PK AfterSave:Throw ValueGenerated.OnAdd, 0], [Property: Person.Name (string) Required, 1] }
+              SELECT p.PersonId, p.Name
+              FROM Persons AS p), 
+          null, 
+          Func<QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator, Person>, 
+          ApplicationDbContext, 
+          False, 
+          True, 
+          True
+      )'
+dbug: 26.12.2022 06:06:32.066 RelationalEventId.ConnectionCreating[20005] (Microsoft.EntityFrameworkCore.Database.Connection) 
+      Creating DbConnection.
+dbug: 26.12.2022 06:06:32.100 RelationalEventId.ConnectionCreated[20006] (Microsoft.EntityFrameworkCore.Database.Connection) 
+      Created DbConnection. (32ms).
+dbug: 26.12.2022 06:06:32.101 RelationalEventId.CommandCreating[20103] (Microsoft.EntityFrameworkCore.Database.Command) 
+      Creating DbCommand for 'ExecuteReader'.
+dbug: 26.12.2022 06:06:32.107 RelationalEventId.CommandCreated[20104] (Microsoft.EntityFrameworkCore.Database.Command) 
+      Created DbCommand for 'ExecuteReader' (42ms).
+dbug: 26.12.2022 06:06:32.109 RelationalEventId.CommandInitialized[20106] (Microsoft.EntityFrameworkCore.Database.Command) 
+      Initialized DbCommand for 'ExecuteReader' (46ms).
+dbug: 26.12.2022 06:06:32.116 RelationalEventId.ConnectionOpening[20000] (Microsoft.EntityFrameworkCore.Database.Connection) 
+      Opening connection to database 'ApplicationDb' on server 'PC\SQLEXPRESS'.
+dbug: 26.12.2022 06:06:32.440 RelationalEventId.ConnectionOpened[20001] (Microsoft.EntityFrameworkCore.Database.Connection) 
+      Opened connection to database 'ApplicationDb' on server 'PC\SQLEXPRESS'.
+dbug: 26.12.2022 06:06:32.447 RelationalEventId.CommandExecuting[20100] (Microsoft.EntityFrameworkCore.Database.Command) 
+      Executing DbCommand [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT [p].[PersonId], [p].[Name]
+      FROM [Persons] AS [p]
+info: 26.12.2022 06:06:32.496 RelationalEventId.CommandExecuted[20101] (Microsoft.EntityFrameworkCore.Database.Command) 
+      Executed DbCommand (50ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT [p].[PersonId], [p].[Name]
+      FROM [Persons] AS [p]
+dbug: 26.12.2022 06:06:32.539 CoreEventId.StartedTracking[10806] (Microsoft.EntityFrameworkCore.ChangeTracking) 
+      Context 'ApplicationDbContext' started tracking 'Person' entity with key '{PersonId: 1}'.
+dbug: 26.12.2022 06:06:32.552 CoreEventId.StartedTracking[10806] (Microsoft.EntityFrameworkCore.ChangeTracking) 
+      Context 'ApplicationDbContext' started tracking 'Person' entity with key '{PersonId: 2}'.
+dbug: 26.12.2022 06:06:32.552 CoreEventId.StartedTracking[10806] (Microsoft.EntityFrameworkCore.ChangeTracking) 
+      Context 'ApplicationDbContext' started tracking 'Person' entity with key '{PersonId: 3}'

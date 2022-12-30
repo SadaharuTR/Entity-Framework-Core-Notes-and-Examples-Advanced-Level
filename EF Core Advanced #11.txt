@@ -1,0 +1,554 @@
+Loading Related Data
+
+Eager Loading Data
+
+using Loading_Related_Data.Configurations; //data.cs'de eklenecek veriler var, varsay.
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
+
+ApplicationDbContext context = new();
+
+#region Loading Related Data
+
+#region Eager Loading
+//Eager loading, generate edilen bir sorguya ilişkisel verilerin parça parça eklenmesini sağlayan ve bunu yaparken iradeli/istekli bir şekilde yapmamızı sağlayan bir yöntemdir.
+//Eager Loading arka planda üretilen sorguya Join uygular. Include kullandığımızda SQL tarafında uygun Join işlemi gerçekleştirilir. Sorguyla hedef tablo birleştirilir.
+
+#region Include
+//Eager loading operasyonunu yapmamızı sağlayan bir fonksiyondur.
+//Yani üretilen bir sorguya diğer ilişkisel tabloların dahil edilmesini sağlayan bir işleve sahiptir..
+
+//var employees = await context.Employees.Include("Orders").ToListAsync();
+//var employees = await context.Employees.Include(e => e.Orders).ToListAsync(); /aynısı. ama tip güvenli.
+
+//var employees = await context.Employees //Include fonksiyonu kullanarak istediğimiz kadar tabloyu o anki sorguya dahil edebiliyoruz.
+//    .Include(e => e.Region)
+//    .Where(e => e.Orders.Count > 2) //araya şartlar ekleyebiliriz. Şartı Include'lardan önceye de alabiliriz.
+//    .Include(e => e.Orders)
+//    .ToListAsync();
+
+#endregion
+
+#region ThenInclude
+//ThenInclude, üretilen sorguda Include edilen tabloların ilişkili olduğu diğer tabloları da sorguya ekleyebilmek için kullanılan bir fonksiyondur. 
+//Eğer ki, üretilen sorguya Include edilen navigation property koleksionel bir property ise işte o zaman bu property üzerinden diğer ilişkisel tabloya
+//erişim gösterilememektedir. Böyle bir durumda koleksiyonel propertylerin türlerine erişip, o tür ile ilişkili diğer tabloları da sorguya eklememizi sağlayan fonksiyondur.
+
+//İlişkisel tablolar arasında derece farketmeksizin, navigation property tekil bir türse propertlere erişerek member'lar üzerinden çalışabiliriz.
+//var orders = await context.Orders
+//    //.Include(o => o.Employee) bu satırı kullanma zorunluluğu önceki sürümde kalktı. Sadece alttaki satırla hem Employee hem Region'u getirebiliriz.
+//    .Include(o => o.Employee.Region)
+//    .ToListAsync();
+
+//Ama bir koleksiyonel navigation property'den bu türün ilişkili olduğu başka bir tabloya gitmek gerekiyorsa ThenInclude kullanılır.
+//var regions = await context.Regions
+//    .Include(r => r.Employees) //Include ederek buradaki sorguya dahil edilmiş olan koleksiyonal Employees NP'nin türünü ThenInclude ile elde edip,
+//    .ThenInclude(e => e.Orders) //ve bu türün içerisindeki Orders property'sini de bu sorguya eklliyoruz.
+//    .ToListAsync(); //işte bunu da ThenInclude ile yapıyoruz.
+
+#endregion
+
+#region Filtered Include
+//Sorgulama süreçlerinde Include yaparken sonuçlar üzerinde filtreleme ve sıralama gerçekleştirebilmemizi sağlayan bir özleliktir.
+
+//var regions = await context.Regions //regionlardan yola çıkıp tüm Employees'ları sorguya dahil edelim.
+//    .Include(r => r.Employees.Where(e => e.Name.Contains("a")).OrderByDescending(e => e.Surname)) 
+//where şartı ile adında sadece a harfi geçenleri dahil et ve soyadına göre sırala şartı ekleyerek filtrele.
+//    .ToListAsync();
+
+//Desteklenen fonksiyonlar : Where, OrderBy, OrderByDescending, ThenBy, ThenByDescending, Skip, Take
+
+//Change Tracker'ın aktif olduğu durumlarda Include edilmiş sorgular üzerindeki filtreleme sonuçları beklenmeyen olabilir.
+//Bu durum, daha önce sorgulanmış ve Change Tracker tarafından takip edilmiş veriler arasında filtrenin gereksinimi dışında kalan veriler için söz konusu olacaktır.
+//Bundan dolayı sağlıklı bir filtered include operasyonu için change tracker'ın kullanılmadığı sorguları tercih etmeyi düşünebilirsiniz.
+
+#endregion
+
+#region Eager Loading İçin Kritik Bir Bilgi
+//EF Core, önceden üretilmiş ve execute edilerek verileri belleğe alınmış olan sorguların verilerini, sonraki sorgularda KULLANIR!
+//Yani herhangi bir sorgulama neticesinde herhangi bir tablonun verilerini belleğe aldıysak eğer, sonraki sorgu süreçlerinde bu veriler kullanılacaktır.
+
+//Orders'taki verileri sorgulayıp, ToList ile execute edip belleğe aldık.
+//var orders = await context.Orders.ToListAsync();
+
+//benzer mantıkta Employees'i sorgulayalım ve execute edip belleğe alalım.
+//var employees = await context.Employees.ToListAsync();
+//bu sorguda Orders ile ilgili bir Include yapmamamıza rağmen Orders bilgileri de gelecektir.
+//EF Core Order'ları her bir Employee'a karşılık ilişkili bir biçimde direkt verir.
+
+//Gerçek hayat işlemlerinde önceden bir veriyi sorgulayıp belleğe aldığımızdan eminsek daha sonraki operasyonlarımızda bir daha o tabloyu Include etmemize
+//gerek kalmadığını bilmemiz gerekir. Masraftan düş...
+//var employees = await context.Employees.Include(e => e.Orders).ToListAsync(); hiç gerek yok.
+
+#endregion
+
+#region AutoInclude - EF Core 6
+//Uygulama seviyesinde bir Entity'e karşılık yapılan tüm sorgulamalarda "kesinlikle" bir tabloya Include işlemi gerçekleştirilecekse eğer bunu her bir sorgu için
+//tek tek yapmaktansa merkezi bir hale getirmemizi sağlayan özelliktir. OnModelCreating'de gerekli işlemler yapılır.
+
+//gerekli işlemleri yapıp aşağıdaki sorguyu çalıştırdığımızda Region ile Join'lenip gelecektir.
+//var employees = await context.Employees.ToListAsync();
+#endregion
+
+#region IgnoreAutoIncludes
+//AutoInclude konfigürasyonunu sorgu seviyesinde pasifize edebilmek için kullandığımız fonksiyondur.
+
+//var employees = await context.Employees.IgnoreAutoIncludes().ToListAsync();
+//bu sorgu için sadece Employees sorgulanacaktır.
+#endregion
+
+#region Birbirlerinden Türetilmiş Entity'ler Arasında Include Operasyonu (Kalıtımda Include)
+
+#region Cast Operatörü İle Include
+//normalde referans p, person olduğu için Order'ları göremiyoruz, fakat burada, person'u Employee'a cast et ardından içerisindeki order'ları sorguya dahil edersek görürüz.
+var persons1 = await context.Persons.Include(p => ((Employee)p).Orders).ToListAsync();
+#endregion
+#region as Operatörü İle Include
+var persons2 = await context.Persons.Include(p => (p as Employee).Orders).ToListAsync();
+#endregion
+#region 2. Overload İle Include
+var persons3 = await context.Persons.Include("Orders").ToListAsync();
+#endregion
+#endregion
+Console.WriteLine();
+#endregion
+#endregion
+
+
+public class Person
+{
+    public int Id { get; set; }
+
+}
+public class Employee : Person
+{
+    //public int Id { get; set; }
+    public int RegionId { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+    public int Salary { get; set; }
+
+    public List<Order> Orders { get; set; }
+    public Region Region { get; set; }
+}
+public class Region
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public ICollection<Employee> Employees { get; set; }
+}
+public class Order
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public Employee Employee { get; set; }
+}
+
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Person> Persons { get; set; }
+    public DbSet<Employee> Employees { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<Region> Regions { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        //hangi entity'e karşılık AutoInclude yapılacaksa-Employee girilir.
+        modelBuilder.Entity<Employee>()
+            .Navigation(e => e.Region) //Navigation metodu üzerinden ilgili Navigation Property bildirilir.
+            .AutoInclude();
+        //her Employee sorguladığımda kesinlikle Region bekliyorsam bunu AutoInclude ile her seferinde yükle demiş oluruz.
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}
+
+-------------------------------------
+
+Explicit Loading Data
+
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
+
+ApplicationDbContext context = new();
+#region Explicit Loading
+
+//Oluşturulan sorguya eklenecek verilerin şartlara bağlı bir şekilde/ihtiyaçlara istinaden yüklenmesini sağlayan bir yaklaşımdır.
+
+//Ameleus Yöntemi
+//employee'lardan Id'si 2 olanı elde edelim.
+//var employee = await context.Employees.FirstOrDefaultAsync(e => e.Id == 2); 
+//buradaki sorguya Include ile Order'ları eklersek şartın sağlanmadığı durumlarda da Order'lar yine elde edilmiş olacak.
+//fakat if bloğu içinde şartın geçerli olduğu durumlarda Order'ları elde etmek istiyorsak aşağıdaki gibi yapabiliriz.
+//if (employee.Name == "Rıfkı") //bu employee'nin adı Rıfkı ise Order'ları elde et.
+//{
+//    var orders = await context.Orders.Where(o => o.EmployeeId == employee.Id).ToListAsync(); //Şarta bağlı Order'ları getirmiş olduk.
+//}
+
+//Fakat Explicit Loading bize daha kısa çözümler sunuyor.
+
+#region Reference
+
+//Explicit Loading sürecinde ilişkisel olarak sorguya eklenmek istenen tablonun navigation property'si eğer ki "tekil" bir türse
+//bu tabloyu reference ile sorguya ekleyebilmekteyiz.
+
+var employee = await context.Employees.FirstOrDefaultAsync(e => e.Id == 2);
+////...
+////...işlemler işlemler
+////...
+//işlemler sonucu gün geldi bu Employee'un Region'una ihtiyacımız oldu. Bu durumda referance'ı kullanabiliriz.
+await context.Entry(employee).Reference(e => e.Region).LoadAsync();
+//bunun için önce context üzerinden Enrty'e gidiyoruz. Bu Entry'e işlem yapılacak objeyi-employee veriyoruz. Verdikten sonra Referance fonksiyonunu kullanarak
+//bu objenin içerisinde hangi nav. property'i tabloya ekleyeceksek onu belirtiyoruz. LoadAsync ile de işlemi tamamlıyoruz.
+
+//Bu işlemler sonucunda employee nesnesine Region'la ilgili ilişkisel verileri de eklemiş oluyoruz.
+
+//Console.WriteLine();
+#endregion
+#region Collection
+
+//Explicit Loading sürecinde ilişkisel olarak sorguya eklenmek istenen tablonun navigation property'si eğer ki çoğul/koleksiyonel bir türse
+//bu tabloyu Collection ile sorguya ekleyebilmekteyiz.
+
+//var employee = await context.Employees.FirstOrDefaultAsync(e => e.Id == 2);
+//...
+//...bişiler bişiler
+//...
+//await context.Entry(employee).Collection(e => e.Orders).LoadAsync();
+
+//Console.WriteLine();
+#endregion
+
+#region Collection'lar da Aggregate Operatör Uygulamak
+//var employee = await context.Employees.FirstOrDefaultAsync(e => e.Id == 2);
+//...
+//...
+//...
+//burada gelen verilerin üzerinde direkt işlem de yapılabilir.
+//Collection üzerinden eklemiş olduğumuz koleksiyonel değeri, sorgu sonucunu elde edip, üzerinde Aggregate işlemleri uygulayabiliriz.
+//var count = await context.Entry(employee).Collection(e => e.Orders).Query().CountAsync();
+//Query ile IQeryable'a dönüştürüp Count Aggregate fonksiyonunu uyguladık. Artık bu employee'nin kaç tane Orders'ı varmış öğrenebiliriz.
+//Sum, average gibi işlemleri de yapabiliriz.
+
+Console.WriteLine();
+#endregion
+#region Collection'lar da Filtreleme Gerçekleştirmek
+
+//var employee = await context.Employees.FirstOrDefaultAsync(e => e.Id == 2);
+////...
+////...cart curt
+////...
+//bugün yapılmış olan siparişleri elde et diyerek filtreleme uygulayabiliriz.
+//var orders = await context.Entry(employee).Collection(e => e.Orders).Query().Where(q => q.OrderDate.Day == DateTime.Now.Day).ToListAsync();
+
+//önce employee'u çekip bu employee'da şarta uygun olan Order'ları veritabanından çekip, bunları ilişkilendirip sorguladık.
+#endregion
+#endregion
+
+public class Employee
+{
+    public int Id { get; set; }
+    public int RegionId { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+    public int Salary { get; set; }
+
+    public List<Order> Orders { get; set; }
+    public Region Region { get; set; }
+}
+public class Region
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public ICollection<Employee> Employees { get; set; }
+}
+public class Order
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public DateTime OrderDate { get; set; }
+
+    public Employee Employee { get; set; }
+}
+
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Employee> Employees { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<Region> Regions { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}
+
+-------------------------------------------
+
+Lazy Loading Data
+
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+
+ApplicationDbContext context = new();
+
+#region Lazy Loading Nedir?
+//Navigation property'ler üzerinde bir işlem yapılmaya çalışıldığı taktirde ilgili property'nin/ye temsil ettiği/karşılık gelen tabloya özel bir sorgu oluşturulup +
+//execute edilmesini ve verilerin yüklenmesini sağlayan bir yaklaşımdır.
+#endregion
+
+//var employee = await context.Employees.FindAsync(2);
+//Console.WriteLine(employee.Region.Name); //null hatası verir.
+
+//Eğer ki Region üzerinde Lazy Loading işlemini uygularsak ne zamanki employee'dan Region'u çağırırız, o zaman daha Name'i çağırılmadan veritabanına gidilir ve gerekli
+//SQL oluşturulur ondan sonra execute edildikten sonra veriler getirilir, son olarak Name'i yazdırmış oluruz.
+//Yani Lazy Loading biz ilgili NP'i kullanmak istediğimiz anda o NP'ye karşılık tabloyu veritabanında sorgulayıp bize getirir.
+
+//OnConfiguring'de Lazy Loading'i aktif ettikten sonra açlıştırırsak bu sefer de NP'lerin virtual olması gerektiği hatasını verir. Eğer ki proxy üzerinden Lazy Loading
+//gerçekleştiriyorsak NP'lerimizin virtual ile işaretlenmiş olması gerekmektedir. (ilgili başlıkta tekrar belirtelim.)
+
+#region Proxy'lerle Lazy Loading
+//Genellikle Proxy yapılanması kullanılır. Aşağıdaki kütüphaneki yapılanmalar kullanılır. NuGet üzerinden yükleyelim.
+//Microsoft.EntityFrameworkCore.Proxies
+//Kullanmak için OnConfiguring'de çalışmamızı yaparız.
+
+#region Property'lerin Virtual Olması
+//Eğer ki proxy'ler üzerinden lazy loading operasyonu gerçekleştiriyorsanız Navigtation Propertylerin virtual ile işaretlenmiş olması gerekmektedir.
+//Aksi taktirde patlama meydana gelecektir.
+
+//Gerekli ayarlamalardan sonra aşağıdaki kod çalışıp ekrana Çemişgezek yazacaktır. 
+//var employee = await context.Employees.FindAsync(2);
+//Console.WriteLine(employee.Region.Name);
+
+#endregion
+#endregion
+
+#region Proxy Olmaksızın Lazy Loading
+//Proxy'ler tüm platformlarda desteklenmeyebilir. Böyle bir durumda manuel bir şekilde lazy loading'i uygulamak mecburiyetinde kalabiliriz.
+
+//Manuel yapılan Lazy Loading operasyonlarında Navigation Proeprtylerin virtual ile işaretlenmesine gerek yoktur!
+
+#region ILazyLoader Interface'i İle Lazy Loading
+//Microsoft.EntityFrameworkCore.Abstractions
+var employee = await context.Employees.FindAsync(2);
+#endregion
+#region Delegate ile Lazy Loading
+//var employee = await context.Employees.FindAsync(2);
+#endregion
+#endregion
+
+#region N+1 Problemi
+//ilkin region'lara ait bir sorgu, sonra employee'lara ait bir sorgu, üçüncü olarak ise her bir order'la ilgili employee'a karşılık döngü döndükçe bir sorgu oluşturulmuştur.
+//4 tane employee varsa 4 tane Order sorgusu oluşturulduğunu görürüz.
+//İşte bu Lazy Loading'in maliyetli oluşunu gösterir. Buna N+1 problemi denir. Çözümü de Lazy Loading kullanmaktan kaçınmak.
+/*
+var region = await context.Regions.FindAsync(1);
+foreach (var employee in region.Employees)
+{
+    var orders = employee.Orders;
+    foreach (var order in orders)
+    {
+        Console.WriteLine(order.OrderDate);
+    }
+}
+*/
+#endregion
+
+//Lazy Loading, kullanım açısından oldukça maliyetli ve performans düşürücü bir etkiye sahiptir.
+//O yüzden kullanırken mümkün mertebe dikkatli olmalı ve özellikle navigation property'lerin döngüsel tetiklenme durumlarında lazy loading'i tercih etmemeye odaklanmalıyız.
+//Aksi taktirde her bir tetiklemeye karşılık aynı sorguları üretip execute edecektir. Bu durumu N+1 Problemi olarak nitelendirmekteyiz.
+//Mümkün mertebe, ilişkisel verileri eklerken Lazy Loading kullanmamaya özen göstermeliyiz.
+
+Console.WriteLine();
+
+#region Proxy İle Lazy Loading
+
+public class Employee
+{
+    public int Id { get; set; }
+    public int RegionId { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+    public int Salary { get; set; }
+    public virtual List<Order> Orders { get; set; }
+    public virtual Region Region { get; set; }
+}
+public class Region
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public virtual ICollection<Employee> Employees { get; set; }
+}
+public class Order
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public virtual Employee Employee { get; set; }
+}
+
+#endregion
+#region ILazyLoader Interface'i ile Lazy Loading
+/*
+public class Employee
+{
+    //manuel olarak LazyLoading'i gerçekleştirebilmemiz için ILazyLoader türünden parametre alan bir constructor daha oluşturmamız gerekiyor.
+    //bunu manuel bir şekilde LazyLoading oluşturacağımız tüm Entity'lerde gerçekleştirmemiz lazım.
+    //bu oluşturduğumuz parametreyi bir referansa atayalım ve bu referans üzeridnen manuel lazy loading operasyonlarını gerçekleştirelim.
+    ILazyLoader _lazyLoader;
+    //Region'a karşılık bir Lazy Loading yapacağımız için Region'la ilgili bir referans oluşturmamız lazım.
+    Region _region;
+    public Employee() { }
+    public Employee(ILazyLoader lazyLoader)
+        => _lazyLoader = lazyLoader;
+    public int Id { get; set; }
+    public int RegionId { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+    public int Salary { get; set; }
+
+    //NP'leri virtual ile işaretleyelim. (Proxy işlemleri için!) (Manuel Lazy Loading'de buna gerek yok.)
+    public List<Order> Orders { get; set; }
+    public Region Region
+    {
+        //get ile lazy loader üzerinden Load operasyonunu gerçekleştir.
+        get => _lazyLoader.Load(this, ref _region); //"bu" entity üzerinde _region referans'sına karşılık yap. Referansı ref ile işaretlemek lazım.
+        //Bu operasyonu yaptıktan sonra her Region NP tetiklendiğinde Lazy Loading'i devreye sokmuş olacağız.
+        set => _region = value;
+    } //seti ile Region referansına verilen değeri/value'u atamış-işaretlemiş oluyoruz.
+
+}
+public class Region
+{
+    ILazyLoader _lazyLoader;
+    ICollection<Employee> _employees;
+    public Region() { }
+    public Region(ILazyLoader lazyLoader)
+        => _lazyLoader = lazyLoader;
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public ICollection<Employee> Employees
+    {
+        get => _lazyLoader.Load(this, ref _employees);
+        set => _employees = value;
+    }
+
+}
+public class Order
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public Employee Employee { get; set; }
+}
+*/
+#endregion
+
+#region Delegate İle Lazy Loading
+/*
+public class Employee
+{
+    Action<object, string> _lazyLoader;
+    Region _region;
+    public Employee() { }
+    //buradaki object bizim LL işlemine tabi tutacağımız Entity'nin türünü, string ise ismini bildirir.
+    public Employee(Action<object, string> lazyLoader)
+        => _lazyLoader = lazyLoader;
+    public int Id { get; set; }
+    public int RegionId { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+    public int Salary { get; set; }
+    public List<Order> Orders { get; set; }
+    public Region Region
+    {
+        get => _lazyLoader.Load(this, ref _region); //burada _lazyLoader üzerinden Load fonksiyonunu devreye sokarak ilgili entity'e karşılık yani o anki
+        //NP'e karşılık olan neyse onları LL'de elde etmiş oluyoruz.
+        set => _region = value;
+    }
+}
+public class Region
+{
+    Action<object, string> _lazyLoader;
+    ICollection<Employee> _employees;
+    public Region() { }
+    public Region(Action<object, string> lazyLoader)
+        => _lazyLoader = lazyLoader;
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public ICollection<Employee> Employees
+    {
+        get => _lazyLoader.Load(this, ref _employees);
+        set => _employees = value;
+    }
+}
+public class Order
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public Employee Employee { get; set; }
+}
+
+//Action delegate'leri üzerinden yapılan Lazy Loading çalışmalarında Load fonksiyonu referanslar için kullanılabilir değil. Extension ile bu durum çözülür.
+static class LazyLoadingExtension
+{
+    //Not: Metodu tanımlarken referans yolu ile iletilmek istenen değişkenin önüne "ref" yazılmalıdır.
+
+    //Action<object, string> türüne aşağıdaki metodu extension olarak ekliyoruz. Lazım olan navigation'un bizzat kendisini almak için türünü bilmemiz lazım.
+    //türünü bilebilmek için önce ref yazıp ardından o an türünü bilemeyeceğimiz için Load<TRelated> ile generic bir yapılanma olarak ortaya koyuyoruz. Parametrelerde de
+    //ref TRelated navigation türünden bir navigation ile çalışacağımızı bildiriyoruz. Son olarak hangi NP'de çalışacaksak onun bize ismini getirecek bir parametre tanımlayıp
+    //ismini verdirtmemek için CallerMemberName attirbute'unu kullanırız. Bu attribute navigationName parametresine değerini hangi member'dan çağırılıyorsa onun adını vererek
+    //otomatik/dinamik bir şekilde halledecektir. Aşağıdaki fonksiyonu nerede tetikleyeceksek, oraya o tetiklenen yapının adını navigationName parametresine
+    //otomatik verecektir. Kullanabilmek için de = null ile default bir değer vermek lazım.
+    public static TRelated Load<TRelated>(this Action<object, string> loader, object entity, ref TRelated navigation, [CallerMemberName] string navigationName = null)
+    {
+        loader.Invoke(entity, navigationName); //loader bir delegate olduğu için önce Invoke ile tetikle. İlk parametreye entity'i, ikincisine de bu entity içerisinde
+        //lazy loading'e tabii tutulan NP'i ver.
+        //Load fonksiyonunda Action'umuzu burada tetiklemiş olduk.
+        return navigation;
+        //bundan sonra LL'e tabii tutulmuş navigation hangisiyse onu return et.
+    }
+}
+*/
+#endregion
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Employee> Employees { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<Region> Regions { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        //Proxy ile Lazy Loading;
+        //optionsBuilder.UseLazyLoadingProxies();
+        //optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+        //ya da aşağıdaki gibi,
+        optionsBuilder
+            .UseLazyLoadingProxies(true) //Interface-Delagate ile Lazy Loading işlemi için burayı false yaptık. Proxy için true olacak.
+            .UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");       
+        //bu işlemi yaptıktan sonra uygulamada Lazy Loading yaklaşımı Enabled hale gelmiş olacak.
+    }
+}

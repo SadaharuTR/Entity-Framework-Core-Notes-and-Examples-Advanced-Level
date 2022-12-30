@@ -1,0 +1,375 @@
+EF Core'da Kalıtım - Table Per Hierarchy
+
+using Microsoft.EntityFrameworkCore;
+
+ApplicationDbContext context = new();
+
+#region Table Per Hierarchy (TPH) Nedir?
+//Kalıtımsal ilişkiye sahip olan Entity'lerin olduğu senaryolarda her bir hiyerarşiye karşılık bir tablo oluşturan davranıştır.
+#endregion
+
+#region Neden Table Per Hierarchy Yaklaşımında Bir Tabloya İhtiyacımız Olsun?
+//İçerisinde benzer alanlara sahip olan entityleri migrate ettiğimizde, her Entity'e karşılık bir tablo oluşturmaktansa bu entityleri tek bir tabloda modellemek isteyebilir
+//ve bu tablodaki kayıtları discriminator kolonu üzerinden birbirlerinden ayırabiliriz. İşte bu tarz bir tablonun oluşturulması ve bu tarz bir tabloya göre sorgulama, veri ekleme,
+//silme vs. gibi operasyonların şekillendirilmesi için TPH davranışını kullanabiliriz.
+#endregion
+
+#region TPH Nasıl Uygulanır?
+//EF Core'da Entity arasında temel bir kalıtımsal ilişki söz konusuysa eğer default olarak kabul edilen davranıştır.
+//O yüzden herhangi bir konfigürasyon gerektirmez!
+
+//TPH'nin uygulanması için tek yapılması gereken;
+//Entity'ler kendi aralarında kalıtımsal ilişkiye sahip olmalı ve bu Entity'lerin hepsi DbContext nesnesine DbSet olarak eklenmelidir! 
+#endregion
+
+#region Discriminator Kolonu Nedir?
+//Table Per Hierarchy yaklaşımı neticesinde kümülatif olarak inşa edilmiş tablonun hangi Entity'e karşılık veri tuttuğunu ayırt edebilmemizi sağlayan bir kolondur.
+//EF Core tarafından otomatik olarak tabloya yerleştirilir. Default olarak içerisinde Entity isimlerini tutar. Discriminator kolonunu istediğimiz gibi özelleştirebiliriz.
+#endregion
+
+#region Discriminator Kolon Adı Nasıl Değiştirilir?
+//Öncelikle hiyerarşinin başında hangi sınıf varsa onun Fluent API'da konfigürasyonuna gidilmeli ve ardından HasDiscriminator fonksiyonu ile özelleştirilmelidir.
+/*
+//Bu eklemeyi yaptığımızda Discriminator kolonunun adının AyiranYuvaYikan olduğunu ve içindeki değerin Employee yazdığını görürürüz.
+Employee employee = new() { Name = "Mahmut", Surname = "Tuncer", Department = "Müzik Tanrısı" };
+await context.Employees.AddAsync(employee);
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region Discriminator Değerleri Nasıl Değiştirilir?
+//Yine hiyerarşinin başındaki entity konfigürasyonlarına gelip, HasDiscriminator fonksiyonu ile özelleştirmede bulunarak ardından HasValue fonksiyonu ile
+//hangi entitye karşılık hangi değerin girileceğini belirtilen türde ifade edebiliriz.
+/*
+//Bu eklemeyi yaptığımızda Discriminator kolonunun adının AyiranYuvaYikan olduğunu ve içindeki değerin B yazdığını görürürüz. Çünkü HasValue ile B olmasını istedik.
+Employee employee = new() { Name = "Mahmut", Surname = "Tuncer", Department = "Müzik Tanrısı" };
+await context.Employees.AddAsync(employee);
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region TPH'da Veri Ekleme
+
+//Davranışların hiçbirinde veri eklerken,silerken, güncellerken vs. normal operasyonların dışında bir işlem yapılmaz!
+//Hangi davranışı kullanıyorsak, EF Core ona göre arkaplanda modellemeyi gerçekleştirecektir.
+/*
+Employee e1 = new() { Name = "Trent", Surname = "Alexander-Arnold", Department = "Sağ Bek" };
+Employee e2 = new() { Name = "Virgil", Surname = "Van Dijk", Department = "Savunma Bakanı" };
+Customer c1 = new() { Name = "Muhammed", Surname = "Salah", CompanyName = "Ofansif Kanat AŞ." };
+Customer c2 = new() { Name = "Ferdi", Surname = "Tayfur", CompanyName = "Damar Bakanlığı" };
+Technician t1 = new() { Name = "Müslüm", Surname = "Gürses", Department = "Damar Tanrısı", Branch = "Damarcı" };
+
+await context.Employees.AddAsync(e1);
+await context.Employees.AddAsync(e2);
+await context.Customers.AddAsync(c1);
+await context.Customers.AddAsync(c2);
+await context.Technicians.AddAsync(t1);
+
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region TPH'da Veri Silme
+//TPH davranışında silme operasyonu yine Entity üzerinden gerçekleştirilir.
+//var employee = await context.Employees.FindAsync(3); //Employee'lerden 3 Id'sine karşılık olan veriyi sildik.
+//Burada 3 Id'sine sahip veriyi Persons'tan istemiyoruz. 
+//3 Id'sine sahip olan ve Emplyee olan veriyi istiyoruz. Discriminator üzerinden bir sorgu yapılıp,
+//Employee'a karşılık 3 Id'si varsa onu getirir. Yoksa hata verir.
+
+//tüm customer'ları silelim
+//var customers = await context.Customers.ToListAsync();
+//context.Customers.RemoveRange(customers);
+//await context.SaveChangesAsync();
+
+//context.Employees.Remove(employee);
+//await context.SaveChangesAsync();
+
+#endregion
+
+#region TPH'da Veri Güncelleme
+//TPH davranışında güncelleme operasyonu yine entity üzerinden gerçekleştirilir.
+Employee guncellenecek = await context.Employees.FindAsync(8);
+guncellenecek.Name = "Kerpeten Ali";
+await context.SaveChangesAsync();
+#endregion
+
+#region TPH'da Veri Sorgulama
+//Veri sorgulama oeprasyonu bilinen DbSet propertysi üzerinden sorgulamadır. Ancak burada dikkat edilmesi gereken bir husus vardır;
+
+var employees = await context.Employees.ToListAsync(); //böyle bir sorgulama yapıyorsak kalıtımsal bağ olduğundan dolayı Technician'lar da gelecektir.
+var techs = await context.Technicians.ToListAsync(); //bu sorguyu sadece Technician'lar için yaparsak sadece Technician'lar gelir.
+
+//kalıtımsal ilişkiye göre yapılan sorgulamada üst sınıf alt sınıftaki verileride kapsamaktadır.
+//O yüzden üst sınıfların sorgulamalarında alt sınıfların verileride gelecektir buna dikkat edilmelidir.
+//Sorgulama süreçlerinde EF Core generate edilen sorguya bir where şartı eklemektedir. TPH davranışının getirisi.
+#endregion
+
+#region Farklı Entity'ler de Aynı İsimde Sütunların Olduğu Durumlar
+//Entity'lerde tekrar eden kolonlar olabilir. Bu kolonları EF core isimsel olarak özelleştirip ayıracaktır.
+//Diyelim ki Customer'da da Technician'da da A isimli bir sürun olsun. Migrate edildiğinde birine normal A ismini verirken diğerine entity ismiyle beraber bir özelleştirme
+//yapıp Technician_A ya da TechnicianA yapacaktır. Kalıtım derecesine göre orjinal isim ataması yapıyor gibi gözüküyor. Customer derece olarak daha yukarıda o yüzden kolonu
+//orjinal A ismini alıyor.
+#endregion
+abstract class Person
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+}
+class Employee : Person
+{
+    public string? Department { get; set; }
+}
+class Customer : Person
+{
+    public int A { get; set; }
+    public string? CompanyName { get; set; }
+}
+class Technician : Employee
+{
+    public int A { get; set; }
+    public string? Branch { get; set; }
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Person> Persons { get; set; }
+    public DbSet<Employee> Employees { get; set; }
+    public DbSet<Customer> Customers { get; set; }
+    public DbSet<Technician> Technicians { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        /* Discriminator İşlemleri için;
+        //önce hiyerarşi'nin başı, base class'ı, reisi olan Person'a gidilmeli. 
+        modelBuilder.Entity<Person>()
+            .HasDiscriminator<string>("AyiranYuvaYikan") //HasDiscriminator kolonunun ismi AyiranYuvaYikan olsun türü de string olsun.
+            //.HasDiscriminator<int>("AyiranYuvaYikan"); integer'da olabilir.
+            .HasValue<Person>("A") //Person geliyorsa A olsun. Ya da int yaptıysak 1 olsun diyebiliriz.
+            .HasValue<Employee>("B") //Employee geliyorsa B, int ise 2,
+            .HasValue<Customer>("C") //Customer geliyorsa C, int ise 3,
+            .HasValue<Technician>("D"); //Teknisyen geliyorsa D olsun. int ise 4 olsun diyebiliriz.
+        */
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}
+
+
+---------------------------------------
+
+Table Per Type Davranışı
+
+- TPH'a göre maliyetlidir.
+
+using Microsoft.EntityFrameworkCore;
+
+ApplicationDbContext context = new();
+
+#region Table Per Type (TPT) Nedir?
+//Entity'lerin aralarında kalıtımsal ilişkiye sahip olduğu durumlarda her bir türe/entitye/tip/referans karşılık bir tablo generate eden davranıştır.
+//Generate edilen bu tablolar hiyerarşik düzlemde kendi aralarında birebir ilişkiye sahiptir.
+#endregion
+
+#region TPT Nasıl Uygulanır?
+//1-TPT'yi uygulayabilmek için öncelikle entity'lerin kendi aralarında olması gereken mantıkta inşa edilmesi gerekmektedir.
+//2-Entity'ler DbSet olarak bildirilmelidir.
+//3-Hiyerarşik olarak aralarında kalıtımsal ilişki olan tüm entityler OnModelCreating fonksiyonunda ToTable metodu ile konfigüre edilmelidir.
+//Böylece EF Core kalıtımsal ilişki olan bu tablolar arasında TPT davranışının olduğunu anlayacaktır.
+#endregion
+
+#region TPT'de Veri Ekleme
+/*
+Technician technician = new() { Name = "Nazgül", Surname = "Efecore", Department = "Yazılım Departmanı", Branch = "C# Kodlama" };
+await context.Technicians.AddAsync(technician);
+
+Customer customer = new() { Name = "Kastım", Surname = "Ir", CompanyName = "Epic Store" };
+await context.Customers.AddAsync(customer);
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region TPT'de Veri Silme
+
+//Bir veriyi siliyorsak ounla ilişkili veriler de silinecektir. Cascade yapılanması devreye girecektir.
+/*
+Employee? silinecek = await context.Employees.FindAsync(5); //Employee'larda 3 Id'sine sahip data'yı elde et. Employee eklemememize rağmen yukarıdaki TEchnician-Customer
+//eklemeleri sayesinde TPT davranışı kullanılmıştır ve verilerimiz bir bütün olduğu için bu veriler sadece bu tablolara dağıtılmıştır. Eğer ki ilgili tabloda unique
+//olarak bir Id'si varsa o değere ait verileri bir bütün olarak getirecektir. Employee'un kalıtımsal ilişkisinin devamı olan alt bir ürünü eklediğimiz dolayısıyla Employee
+//ile ilgili bir kayıt koyacağımızdan dolayı, o kaydı sorgularken de doğal olarak diğer verileri de elde edeceğiz.
+context.Employees.Remove(silinecek);
+await context.SaveChangesAsync();
+*/ 
+
+//Abstract Class olan bir Entity'e karşılık tablo oluşturmak TPT ile mümkün oldu. Bu tablo üzerinden istediğimiz sorguyu yaratıp alt sınıflar üzerinde değişiklik
+//yapma şansımız vardır.
+
+//Person silelim.
+/*
+Person? silinecekPerson = await context.Persons.FindAsync(1);
+context.Persons.Remove(silinecekPerson);
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region TPT'de Veri Güncelleme
+
+//Elde etmek istediğimiz veriyi ister Technician'dan ister Employee'dan git, ister Person'dan. 2 Id'sine sahip veriyi elde edebiliriz.
+//Biz Technician'dan gidelim.
+//Technician technician = await context.Technicians.FindAsync(6);
+//technician.Id = 1;
+//await context.SaveChangesAsync();
+
+#endregion
+
+#region TPT'de Veri Sorgulama
+
+//Employee employee = new() { Name = "Fatih", Surname = "Sultan Mehmet", Department = "Osmanlı" };
+//await context.Employees.AddAsync(employee);
+//await context.SaveChangesAsync();
+
+var technicians = await context.Technicians.ToListAsync();
+var employees = await context.Employees.ToListAsync();
+
+Console.WriteLine();
+
+#endregion
+
+abstract class Person
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+}
+class Employee : Person
+{
+    public string? Department { get; set; }
+}
+class Customer : Person
+{
+    public string? CompanyName { get; set; }
+}
+class Technician : Employee
+{
+    public string? Branch { get; set; }
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Person> Persons { get; set; }
+    public DbSet<Employee> Employees { get; set; }
+    public DbSet<Customer> Customers { get; set; }
+    public DbSet<Technician> Technicians { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        //buradan hiyerarşiyi manuel olarak ayarlamamız lazım.
+        //Bu davranışla kalıtımsal hiyerarşiye tuttuğumuz bütün entityleri OnModelCreating -> ToTable ile konf. etmemiz buradaki modellemenin TPT olduğunu gösterir.
+        modelBuilder.Entity<Person>().ToTable("Persons");
+        modelBuilder.Entity<Employee>().ToTable("Employees");
+        modelBuilder.Entity<Customer>().ToTable("Customers");
+        modelBuilder.Entity<Technician>().ToTable("Technicians");
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}
+
+-----------------------------------------
+
+Table Per Concrete Yaklaşımı
+
+using Microsoft.EntityFrameworkCore;
+
+using System.Collections.Generic;
+using System.Reflection.Emit;
+
+ApplicationDbContext context = new();
+
+#region Table Per Concrete Type (TPC) Nedir?
+//TPC davranışı, kalıtımsal ilişkiye sahip olan Entity'lerin olduğu çalışmalarda sadece concrete/somut olan Entity'lere karşılık bir tablo oluşturacak bir davranış modelidir.
+//TPC, TPT'nin daha performanslı versiyonudur. /Çünkü daha az tablo oluşturuluyor./
+#endregion
+
+#region TPC Nasıl Uygulanır?
+//Hiyerarşik düzlemde abstract olan yapılar üzerinden, OnModelCreating -> Entity fonskiyonuyla konfigürasyona girip ardından UseTpcMappingStrategy fonksiyonu
+//eşliğinde kullancağımız davranışın TPC olacağını belirleyebiliriz.
+#endregion
+
+#region TPC'de Veri Ekleme
+/*
+await context.Technicians.AddAsync(new() { Name = "Tancan", Surname = "Fümen", Branch = "Yazılımcı", Department = "Yazılım Departmanı" });
+await context.Technicians.AddAsync(new() { Name = "Can", Surname = "Sungur", Branch = "Yazılımcı", Department = "Yazılım Departmanı" });
+await context.Technicians.AddAsync(new() { Name = "Hasan Fehmi", Surname = "Nemli", Branch = "Yazılımcı", Department = "Yazılım Departmanı" });
+
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region TPC'de Veri Silme
+/*
+//3 Id'sine sahip Teknisyeni uçurduk.
+Technician? silinecek = await context.Technicians.FindAsync(3);
+context.Technicians.Remove(silinecek);
+*/
+await context.SaveChangesAsync();
+
+#endregion
+
+#region TPC'de Veri Güncelleme
+//2 Id'sine sahip Technician'ı Mahmutoviç olarak değiştirelim.
+/*
+Technician? guncellenecek = await context.Technicians.FindAsync(2);
+guncellenecek.Name = "Mahmutoviç";
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region TPC'de Veri Sorgulama
+
+//var datas = await context.Technicians.ToListAsync();
+//Console.WriteLine();
+
+#endregion
+abstract class Person
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+}
+class Employee : Person
+{
+    public string? Department { get; set; }
+}
+class Customer : Person
+{
+    public string? CompanyName { get; set; }
+}
+class Technician : Employee
+{
+    public string? Branch { get; set; }
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Person> Persons { get; set; }
+    public DbSet<Employee> Employees { get; set; }
+    public DbSet<Customer> Customers { get; set; }
+    public DbSet<Technician> Technicians { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        //TPT - Eski Yöntem
+        //modelBuilder.Entity<Person>().ToTable("Persons");
+        //modelBuilder.Entity<Employee>().ToTable("Employees");
+        //modelBuilder.Entity<Customer>().ToTable("Customers");
+        //modelBuilder.Entity<Technician>().ToTable("Technicians");
+
+        //TPC - Yeni Yöntem
+        modelBuilder.Entity<Person>().UseTpcMappingStrategy();
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}

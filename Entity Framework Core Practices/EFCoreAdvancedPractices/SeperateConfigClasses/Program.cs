@@ -1,0 +1,82 @@
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using System.Reflection;
+
+//EF Core'da konfigürasyonları harici dosyalara almamızı sağlayacak olan özellikler.
+//Onion Architecture, klasik bilinen 3 veya n katmanlı mimari yapılanmasındaki karşılaşılan zorlukları ve kaygıları ele alarak bunlara çözüm sağlamayı amaçlayan
+//ve katmanlar arasında gevşek bir bağımlılık kurularak mimariyi inşa etmemizi sağlayan bir yaklaşımdır.
+
+Console.WriteLine();
+
+#region OnModelCreating
+//Genel anlamda veritabanı ile ilgili konfigürasyonel operasyonların dışında entityler üzerinde konfigürasyonel çalışmalar yapmamızı sağlayan bir fonskiyodundur.
+#endregion
+
+#region IEntityTypeConfiguration<T> Arayüzü
+//Entity bazlı yapılacak olan konfigürasyonları o entitye özel harici bir dosya üzerinde yapmamızı sağlayan bir arayüzdür.
+
+//Harici bir dosyada konfigürasyonların yürütülmesi merkezi bir yapılandırma noktası oluşturmamızı sağlamaktadır.
+//Harici bir dosyada konfigürasyonların yürültülmesi, entity sayısının fazla olduğu senaryolarda yönetilebilirliği arttıracak ve yapılandırma ile ilgili geliştiricinin
+//yükünü azaltacaktır.
+#endregion
+
+#region ApplyConfiguration Metodu
+//Bu metot harici konfigürasyonel sınıflarımızı EF Core'a bildirebilmek için kullandığımız bir metotdur.
+#endregion
+
+#region ApplyConfigurationsFromAssembly Metodu
+//Uygulama bazında oluşturulan harici konfigürasyonel sınıfların her birini OnModelCreating metodunda ApplyCOnfiguration ile tek tek bildirmek yerine bu sınıfların
+//bulunduğu Assembly'i bildirerek IEntityTypeConfiguration arayüzünden türeyen tüm sınıfları ilgili entitye karşılık konfigürasyonel değer olarak baz almasını
+//tek kalemde gerçekleştirmemizi sağlayan bir metottur.
+#endregion
+
+//Varsayalım ki Order bu çalışmadaki onlarca Entity'den bir tanesi.
+class Order
+{
+    public int OrderId { get; set; }
+    public string Description { get; set; }
+    public DateTime OrderDate { get; set; }
+}
+
+//Order'a karşılık bizim harici olarak konfigürasyonel yapılandırmalarımı bir dosya da oluşturmak istiyorsak;
+//OrderConfiguration isminde bir sınıf oluşturup IEntityTypeConfiguration arayüzünü bu sınıfa uyguluyoruz. Hangi entity üzerinde konf. sağlayacaksak onu generic olarak veriyoruz.
+class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    public void Configure(EntityTypeBuilder<Order> builder) //bu interface bize Configure isminde bir metodu implement edecektir. builder parametresi üzerinden Order ile yapacağımız
+        //tüm çalışmaları gerçekleştirebiliriz.
+    {
+        builder.HasKey(x => x.OrderId); //OrderId kolonunu PK kolonu olacağını bildirelim.
+        builder.Property(p => p.Description)
+            .HasMaxLength(13); //Description'a gidip maksimum karakter sayısının 13 olacağını belirtelim.
+        builder.Property(p => p.OrderDate)
+            .HasDefaultValueSql("GETDATE()"); //OrderDate kolonunun default değerini GETDATE fonksiyonunu çağırarak belirleyelim... tarzı ayarlamalar yapabiliriz.
+    }
+    //Order Entity'si ile ilgili konfigürasyonları OnModelCreating'in içerisinde değil, Order'a ait konf. sınıfı oluşturup bu sınıfı IEntityTypeConfiguration'dan
+    //implement edip içerisinde gerekli konfigürasyonları yaptık.
+    //Fakat bütün bunları yaptıktan sonra uygulamaya bunu bildirmemiz gerek. Bunun içinde OnModelCreating'e gidiyoruz.
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Order> Orders { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        //burada bildirimi yapıyoruz.
+        //modelBuilder.ApplyConfiguration(new OrderConfiguration()); //OrderConfiguration nesnesini al, generic <Order> parametresinden Order'a ait bir konf. yapılanma olduğunu
+        //anla ve Order Entity'sine karşılık bütün konf. buradan topla.
+        //ApplyConfiguration isimli metot, bizim entity type konf. arayüzünden türetip özelliştirilmiş konf. sınıflarımızı DbContext nesnesine bildirmek için kullandığımız
+        //bir metottur.
+
+        //diyelim ki çok fazla konf. işlemi yaptık.
+        //İligli Assembly'deki ne kadar IEntityTypeConfiguration'dan türeyen-implement eden sınıf varsa bunların hepsini verilmiş olan generic parametredeki entity'e 
+        //uygun biçimde konf. değer olarak al.
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly()); //hangi Assembly'den alacağımızı da o anki çalışan Assembly hangisiyse, GetExecutingAssembly
+        //ile, onun içerisinde ara. 
+
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}

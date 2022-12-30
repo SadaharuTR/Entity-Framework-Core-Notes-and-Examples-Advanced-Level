@@ -1,0 +1,5 @@
+C:\Users\acdem\OneDrive\Masaüstü\Entity Framework Core Practices\EFCoreAdvancedPractices\BackingFields\obj\Debug\net6.0\BackingFields.csproj.AssemblyReference.cache
+C:\Users\acdem\OneDrive\Masaüstü\Entity Framework Core Practices\EFCoreAdvancedPractices\BackingFields\obj\Debug\net6.0\BackingFields.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\acdem\OneDrive\Masaüstü\Entity Framework Core Practices\EFCoreAdvancedPractices\BackingFields\obj\Debug\net6.0\BackingFields.AssemblyInfoInputs.cache
+C:\Users\acdem\OneDrive\Masaüstü\Entity Framework Core Practices\EFCoreAdvancedPractices\BackingFields\obj\Debug\net6.0\BackingFields.AssemblyInfo.cs
+C:\Users\acdem\OneDrive\Masaüstü\Entity Framework Core Practices\EFCoreAdvancedPractices\BackingFields\obj\Debug\net6.0\BackingFields.csproj.CoreCompileInputs.cache

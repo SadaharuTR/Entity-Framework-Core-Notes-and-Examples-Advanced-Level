@@ -1,0 +1,410 @@
+﻿
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
+
+ApplicationDbContext context = new();
+
+/* Hatırlatma
+SQL'de Join
+
+İlişkisel veritabanı (relational database) sistemlerinde sıklıkla kullanılan işlemlerden biri olan JOIN,
+table ve view gibi kaynakları ilişkilendiren, SELECT, INSERT INTO SELECT, SELECT INTO, UPDATE ve DELETE 
+gibi işlemlerde FROM ile birlikte kullanılan ve bu şekilde tabloları (iki veya daha fazla) birleştiren 
+ve sorgular temelinde bir sonuç tablosu (result table) oluşturmaya yarayan bir birleştiricidir.
+ */
+
+
+#region Complext Query Operators
+
+#region Join
+/*
+INNER JOIN (İç Birleştirici)
+Varsayılan seçenektir ve birebir ilişki için tercih edilir. İki veya daha fazla veri tablosunu 
+belirtilen kolon veya kolonların eşitliğine göre ortak kolonlar üzerinden birleştirir. 
+Kullanımında JOIN ifadesinin yanı sıra INNER JOIN şeklinde de tercih edilebilir.
+ */
+#region Query Syntax
+/*
+var query = from photo in context.Photos
+            join person in context.Persons
+                on photo.PersonId equals person.PersonId
+            select new
+            {
+                person.Name,
+                photo.Url
+            };
+var datas = await query.ToListAsync();
+*/
+#endregion
+
+#region Method Syntax
+/*
+var query = context.Photos
+    .Join(context.Persons,
+    photo => photo.PersonId,
+    person => person.PersonId,
+    (photo, person) => new
+    {
+        person.Name,
+        photo.Url
+    });
+var datas = await query.ToListAsync();
+*/
+
+#endregion
+
+#region Multiple Columns Join
+
+#region Query Syntax
+/*
+//Join işleminde birden fazla kolon kullanacaksak sorgulama süreçlerinde anonim yapıları kullanacağız.
+var query = from photo in context.Photos
+            join person in context.Persons
+                on new { photo.PersonId, photo.Url } equals new { person.PersonId, Url = person.Name }
+            select new
+            {
+                person.Name,
+                photo.Url
+            };
+var datas = await query.ToListAsync();
+*/
+#endregion
+#region Method Syntax
+/*
+var query = context.Photos
+    .Join(context.Persons,
+    photo => new
+    {
+        photo.PersonId,
+        photo.Url
+    },
+    person => new
+    {
+        person.PersonId,
+        Url = person.Name
+    },
+    (photo, person) => new
+    {
+        person.Name,
+        photo.Url
+    });
+
+var datas = await query.ToListAsync();
+*/
+#endregion
+#endregion
+
+#region 2'den Fazla Tabloyla Join
+
+#region Query Syntax
+/*
+var query = from photo in context.Photos
+            join person in context.Persons
+                on photo.PersonId equals person.PersonId
+                //buraya kadar photo ile person'ları birleştirdik
+            join order in context.Orders
+                on person.PersonId equals order.PersonId
+                //burada da üstteki birleştirilmiş tablo ile order'ları birleştirdik.
+            select new
+            {
+                person.Name,
+                photo.Url,
+                order.Description
+            };
+
+var datas = await query.ToListAsync();
+*/
+#endregion
+
+#region Method Syntax
+/*
+var query = context.Photos
+    .Join(context.Persons,
+    photo => photo.PersonId,
+    person => person.PersonId,
+    (photo, person) => new
+    {
+        person.PersonId,
+        person.Name,
+        photo.Url
+    }) //photo ile person arasındaki join sorgusunu oluşturmuş olduk ve hangi verileri bekliyorsak bildirdik.
+    .Join(context.Orders, //önceki sorgunun üzerine Join diyerek devam edip Order'lar ile Join işlemine
+    personPhotos => personPhotos.PersonId,
+    order => order.PersonId,
+    (personPhotos, order) => new
+    {
+        personPhotos.Name,
+        personPhotos.Url,
+        order.Description
+    });
+
+var datas = await query.ToListAsync();
+*/
+#endregion
+#endregion
+
+#region Group Join - GroupBy Değil!
+//Linq sorgulama sürecinde bir iç değer oluşturarak operasyonlar gerçekleştirmeyi yapmamızı sağlar.
+/*
+var query = from person in context.Persons
+            join order in context.Orders
+                on person.PersonId equals order.PersonId into personOrders //person'lara karşılık order'ları
+                //gruplamak istiyorsak into personOrders yazarız.
+            //from order in personOrders
+            select new
+            {
+                person.Name, 
+                Count = personOrders.Count(), //artık order'a erişemeyiz. personOrders'ı kullanacağız.
+                personOrders //ya da bütün personOrders elde edebiliriz.
+            };
+var datas = await query.ToListAsync();
+*/
+#endregion
+#endregion
+
+/*
+OUTER JOIN (Dış Birleştirici)
+OUTER JOIN temelde INNER JOIN ile benzer şekilde ortak kolonlar üzerinden bağlantı kurar, 
+ancak sonuç olarak tablolarda karşılığı olmayan satırları getirir. Bu sayede bir veri tablosunda olup 
+bir diğerinde (veya diğerlerinde) olmayan kayıtları listeleyebiliriz. Kullanım aşamasında baskın olacak
+(temel olarak alınacak) tablo ayrıca LEFT ve RIGHT ifadeleriyle belirtilir ve belirtilen ikinci tabloda
+karşılığı olmayan satırlar NULL olarak gösterilir. 
+ */
+
+//DefaultIfEmpty : Sorgulama sürecinde ilişkisel olarak karşılığı olmayan verilere default değerini
+//yazdıran yani LEFT JOIN sorgusunu oluşturtan bir fonksiyondur.
+//left ve right join'ler için Query Syntax kullanılmalıdır. Method syntax üzerinden yapılamaz.
+
+#region Left Join
+/*
+Dış birleştiricilerden LEFT COIN solunda belirtilen tablodaki tüm satırları listeler 
+ve sağ tarafta belirtilen tabloya ait kolonları ise NULL olarak döndürür.
+*/
+/*
+var query = from person in context.Persons
+            join order in context.Orders
+                on person.PersonId equals order.PersonId into personOrders
+            from order in personOrders.DefaultIfEmpty()
+            //person'lara karşılık Order'lardan boş olan varsa bunların default değerini getir, demek
+            //left join yap anlamına gelmektedir. (EF Core'da)
+            select new
+            {
+                person.Name,
+                order.Description
+            };
+var datas = await query.ToListAsync();
+//sol taraftaki tabloyu listeledikten sonra sağ taraftaki tabloda varsa karşılığı getir yoksa null ver.
+*/
+#endregion
+
+#region Right Join
+/*
+RIGHT JOIN, LEFT JOIN gibi yön belirtrerek sağında yer alan tablodaki tüm satırları listeler. 
+Solunda yer alan tablo NULL olarak dönmektedir.
+*/
+//EF Core'da Right Join oluşturamıyoruz. Ama mantığı ile hareket edebiliriz.
+//Yukarıdakinin tersi olarak önce Orders sonra Persons'ları listlersek mantıken Right Join uygulamış oluruz.
+/*
+var query = from order in context.Orders
+            join person in context.Persons
+                on order.PersonId equals person.PersonId into orderPersons
+            from person in orderPersons.DefaultIfEmpty()
+            select new
+            {
+                person.Name,
+                order.Description
+            };
+
+var datas = await query.ToListAsync();
+*/
+//üretilen sorgu left join olacaktır. Ama right join işlemi yapmış oluruz.
+#endregion
+
+#region Full Join
+/*
+FULL JOIN, arasında belirtildiği tablolara ait (sağ ve sol) tüm satırları listeler ve 
+bu tablolarda karşılığı olmayan satırları NULL olarak belirtir. 
+FULL JOIN işlemi LEFT JOIN ve RIGHT JOIN işlemlerinin UNION ile birleştirilmesi şeklinde de 
+uygulanabilir. 
+*/
+//EF Core'da Full Join'de yapılamamaktadır. Önce left sonra right join yapıp ikisini birleştirirsek
+//full join mantığını oluşturmuş oluruz.
+/*
+//önce left join
+var leftQuery = from person in context.Persons
+                join order in context.Orders
+                    on person.PersonId equals order.PersonId into personOrders
+                from order in personOrders.DefaultIfEmpty()
+                select new
+                {
+                    person.Name,
+                    order.Description
+                };
+
+//sonra right join
+var rightQuery = from order in context.Orders
+                 join person in context.Persons
+                     on order.PersonId equals person.PersonId into orderPersons
+                 from person in orderPersons.DefaultIfEmpty()
+                 select new
+                 {
+                     person.Name,
+                     order.Description
+                 };
+//burada da ikisini birleştir.
+var fullJoin = leftQuery.Union(rightQuery);
+var datas = await fullJoin.ToListAsync();
+*/
+/*
+UNION 
+FULL JOIN (FULL OUTER JOIN başlığı altında kısaca değindiğimiz UNION işleminden de ayrıca bahsetmek 
+uygun olacaktır. UNION, birleştirme tiplerinin dışında, birden fazla tabloda sorgu gerçekleştirmek 
+amacıyla kullanılan yöntemlerden biridir. Yukarıdaki örnekte birden fazla SELECT ifadesini tek bir 
+sorgu olarak uygulamıştık, bu sayede tek sorgulama ile sonuç tablolar yaratılabilmektedir. 
+UNION işleminde birleştirilmek istenen veri tablolarının belirlenen alanlar (kolonlar) aynı sayıda ve 
+aynı veri tipinde olmalıdır. Alanların belirlenmesi işlemi SELECT ile sağlanır. 
+ */
+#endregion
+
+#region Cross Join
+/*
+CROSS JOIN (Çapraz Birleştirici)
+Fazla kullanılmayan bir yöntemdir. Tablolar arasında yapılan birleştirmede seçilen kolonlar arasındaki 
+tüm kombinasyonlar sonuç tablosu (result table) haline getirilir. 
+Bu sonuç tablosundaki satır sayısı alanların kartezyen çarpımı 
+(cartesian product / iki kümenin elemanlarının sırayla karşılaştırılması) kadardır.
+*/
+//EF Core from üzerine from sorgusunu bir cross join olarak nitelendirir.
+/*
+var query = from order in context.Orders
+            from person in context.Persons
+            select new
+            {
+                order, //illa kolon yazmaya gerek yok. tüm verileri cross-join yapabiliriz.
+                person                
+            };
+
+var datas = await query.ToListAsync();
+*/
+#endregion
+
+#region Collection Selector'da Where Kullanma Durumu
+//Eğer ki Collection Selector üzerinde where şartını uygularsak EF Core arka planda bir 
+//inner join sorgusu oluşturur.
+/*
+var query = from order in context.Orders
+            from person in context.Persons.Where(p => p.PersonId == order.PersonId) 
+            select new
+            {
+                order,
+                person,
+            };
+
+var datas = await query.ToListAsync();
+*/
+#endregion
+
+/*
+APPLY Operatörü Kullanımı
+APPLY operatörü kullanarak bir sorguda dıştaki tablodan dönen her satır için bir tablo ifadesi çağrılır.
+APPLY bir set operatörü değil bir tablo operatörüdür. 
+JOIN’de olduğu gibi FROM ifadesinde kullanarak birbiriyle uyumlu iki tablo üzerinde işlem yapılabilir. 
+
+APPLY operatörünün CROSS APPLY ve OUTER APPLY şeklinde iki formu bulunmaktadır. 
+Sol tablodan alınan her sonuç sağ tabloya input olarak geçirilir.
+*/
+#region Cross Apply
+//Inner Join'e benzer.
+/*
+Operatörün CROSS APPLY formu, çıktı sonucunu yalnızca sol tablodaki değerlerden sağ tablo kaynağında 
+bulunduğunda ayarlar.
+*/
+/*
+var query = from person in context.Persons
+            from order in context.Orders.Select(o => person.Name)
+            select new
+            {
+                person,
+                order
+            };
+
+var datas = await query.ToListAsync();
+*/
+#endregion
+
+#region Outer Apply
+//Left Join'e benzer.
+/*
+Operatörün OUTER APPLY formu kullanıldığında, output kümesinde sol tablodaki tüm satırlar ve 
+bu satırların karşılık geldiği sağ tablodaki tüm satırlar bulunur. Sağ tablonun sol tablodan bir değer 
+içermemesi durumunda, sağ tablodan gelen sütunlar NULL değerli olacaktır.
+*/
+/*
+var query = from person in context.Persons
+            from order in context.Orders.Select(o => person.Name).DefaultIfEmpty()
+            select new
+            {
+                person,
+                order
+            };
+
+var datas = await query.ToListAsync();
+*/
+#endregion
+#endregion
+Console.WriteLine();
+public class Photo
+{
+    public int PersonId { get; set; }
+    public string Url { get; set; }
+
+    public Person Person { get; set; }
+}
+public enum Gender { Man, Woman }
+public class Person
+{
+    public int PersonId { get; set; }
+    public string Name { get; set; }
+    public Gender Gender { get; set; }
+
+    public Photo Photo { get; set; }
+    public ICollection<Order> Orders { get; set; }
+}
+public class Order
+{
+    public int OrderId { get; set; }
+    public int PersonId { get; set; }
+    public string Description { get; set; }
+
+    public Person Person { get; set; }
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Photo> Photos { get; set; }
+    public DbSet<Person> Persons { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        modelBuilder.Entity<Photo>()
+            .HasKey(p => p.PersonId);
+
+        modelBuilder.Entity<Person>()
+            .HasOne(p => p.Photo)
+            .WithOne(p => p.Person)
+            .HasForeignKey<Photo>(p => p.PersonId);
+
+        modelBuilder.Entity<Person>()
+            .HasMany(p => p.Orders)
+            .WithOne(o => o.Person)
+            .HasForeignKey(o => o.PersonId);
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server = PC\\SQLEXPRESS; Database = ApplicationDb; User ID = SA; Password = 1; TrustServerCertificate = True");
+    }
+}

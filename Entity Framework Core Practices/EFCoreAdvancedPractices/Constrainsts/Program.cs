@@ -1,0 +1,188 @@
+﻿using Microsoft.EntityFrameworkCore;
+
+ApplicationDbContext context = new();
+
+#region Primary Key Constraint
+
+//Bir kolonu PK constraint ile birincil anahtar yapmak istiyorsak eğer bunun için name convention'dan istifade edebiliriz.
+//Id, ID, EntityNameId,EntityNameID şeklinde tanımlanan tüm property'ler default olarak EF Core tarafından PK Constraint olacak şekilde generate edilirler.
+//Eğer ki, farklı bir property'e PK özelliğini atamak istiyorsan burada HasKey Fluent API'ı yahut Key Attribute'u ile bu bildirimi iradeli bir şekilde yapmak zorundayız.
+
+#region HasKey Fonksiyonu
+
+#endregion
+#region Key Attribute'u
+
+#endregion
+#region Alternate Keys - HasAlternateKey
+//Bir entity içerisinde PK'e ek olarak her entity instance'ı için, alternatif bir benzersiz tanımlayıcı işlevine sahip olan bir key'dir.
+#endregion
+#region Composite Alternate Key
+
+#endregion
+
+#region HasName Fonksiyonu İle Primary Key Constraint'e İsim Verme
+
+#endregion
+#endregion
+
+#region Foreign Key Constraint
+//ilişkisel tablo senaryolarında kullanılır. Dependent Table'daki herhangi bir verinin Principle Table'daki hangi veriye karşılık, onunla ilişkili oluşturulacağının
+//garantisini alan bir constraint çeşididir.
+#region HasForeignKey Fonksiyonu
+//ile konfigüre edilir.
+#endregion
+#region ForeignKey Attribute'u
+
+#endregion
+#region Composite Foreign Key
+
+#endregion
+
+#region Shadow Property Üzerinden Foreign Key
+
+#endregion
+
+#region HasConstraintName Fonksiyonu İle Primary Key Constraint'e İsim Verme
+
+#endregion
+#endregion
+
+#region Unique Constraint
+
+#region HasIndex - IsUnique Fonksiyonları ile Unique C.
+
+#endregion
+
+#region Index, IsUnique Attribute'ları ile Unique C.
+
+#endregion
+
+#region Alternate Key ile Unique C.
+
+#endregion
+#endregion
+
+#region Check Constratint
+//herhangi bir kolondaki veriyi check etmemizi sağlayan belirli şartlara göre değerlendirip onlara göre kabul eden bir kısıtlayıcıdır.
+#region HasCheckConstraint
+//ile kullanılır.
+#endregion
+#endregion
+
+//Index Attribute'u class seviyesinde uygulanan bit att.'dur.
+//[Index(nameof(Blog.Url), IsUnique = true)] //Blog'daki Url'i unique yap.
+class Blog
+{
+    public int Id { get; set; }
+    //[Key] //bu entity'e karşılık generate edilecek tablodaki primary key'i BlogName kolonu yap. Id kolonunu değil.
+    public string BlogName { get; set; }
+    public string Url { get; set; }
+
+    public ICollection<Post> Posts { get; set; }
+}
+class Post
+{
+    public int Id { get; set; }
+
+    /*
+    [ForeignKey(nameof(Blog))] //Attribute ile de BlogId'yi Foreign Key olarak tanımlayabiliriz.
+    public int BlogId { get; set; }
+    */
+    public string Title { get; set; }
+    public string BlogUrl { get; set; }
+
+    //Check Constraint'i kullanmak için; bir Post girilirken A değeri 10'un altındaysa ve A değeri B'den büyükse tarzı senaryolarımız olabilir.
+    public int A { get; set; }
+    public int B { get; set; }
+
+    public Blog Blog { get; set; }
+}
+
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Blog> Blogs { get; set; }
+    public DbSet<Post> Posts { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        /*BlogName'i Fluent API ile PK atamak.
+        modelBuilder.Entity<Blog>()
+            .HasKey(b => b.BlogName);
+        */
+
+        //Böyle bir durumda Id kendiliğinden PK atanacaktır. Url'de Alternate Key olarak (SQL'deki karşılığı Unique Constraint) ayarlanacaktır.
+        /*
+        modelBuilder.Entity<Blog>()
+            .HasAlternateKey(b => b.Url);
+        */
+
+        //Url ile BlogName'i composite olarak unique olmasını istersek;
+        //Composite, bütünleşik olrak unique olma durumunu ifade eder. Aynı anda iki (3-4..) kolondaki değerler tekrar edemez, tekli olarak edebilir.
+        /*
+        modelBuilder.Entity<Blog>()
+            .HasAlternateKey(b => new {b.Url, b.BlogName});
+        */
+
+        //PK'de oluşturulacak constraint'in ismini belirleyebilmek için Fluent API'da;
+        /*
+        modelBuilder.Entity<Blog>()
+            .HasKey(b => b.Id)
+            .HasName("ornek");
+        */
+        //yazdığımız zaman ornek isimli PK oluşturulacaktır.      
+
+        //Bire çok davranışta Foreign Key olarak BlogId kolonunu seçiyoruz.
+        /*
+        modelBuilder.Entity<Blog>()
+            .HasMany(b => b.Posts)
+            .WithOne(b => b.Blog)
+            .HasForeignKey(p => p.BlogId)
+        */
+
+        //Composite olarak Foreign Key ataması da yapabiliriz. İki tablodan bir tanesinde composite PK var, diğeri de buna composite FK ile bağlı, gibi senaryolarda
+        //kullanılabilir.
+        /*
+        modelBuilder.Entity<Blog>()
+            .HasMany(b => b.Posts)
+            .WithOne(b => b.Blog)
+            .HasForeignKey(p => new { p.BlogId, p.BlogUrl });
+        */
+
+        //Diyelim ki BlogId diye bir property'miz yok. Bu aşamadan sonra EF Core fiziksel bir property üzerinden değil de foreign key oluştururken artık
+        //BlogForeignKeyId isimli shadow property üzerinden generate işlemini gerçekleştirip constaint'i bağlayacaktır. Yani Blog'un içerisindeki Id'yi
+        //Post'un içerisindeki BlogForeignKeyId FK'i ile bağlayacaktır.
+        /*
+        modelBuilder.Entity<Blog>()
+            .Property<int>("BlogForeignKeyId");
+        modelBuilder.Entity<Blog>()
+            .HasMany(b => b.Posts)
+            .WithOne(b => b.Blog)
+            .HasForeignKey("BlogForeignKeyId")
+            .HasConstraintName("OrnekForeignKeyId");
+        */
+        //FK'i isimlendirirken HasConstraintName'i kullanırız.
+
+        //Fluent API ile de index üzerinden Url'i unique yapabiliriz.
+        /*
+        modelBuilder.Entity<Blog>()
+            .HasIndex(b => b.Url)
+            .IsUnique();
+        */
+
+        //Fluent API ile Alternate Key üzerinden de Url'i unique yapabiliriz.
+        /*
+        modelBuilder.Entity<Blog>()
+            .HasAlternateKey(b => b.Url)
+        */
+
+        //a_b_check_const isimli bir check constraint oluşturduk.
+        modelBuilder.Entity<Post>()
+            .HasCheckConstraint("a_b_check_const", "[A] > [B]"); //A B'den büyükse kayıtları kabul et.
+        //kolonları köşeli parantezle bildirmek SQL'de herhangi bir key'e karşılık gelmeyi engelleyerek daha sağlıklı bir bildirim yapmamızı sağlar.
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}

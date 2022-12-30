@@ -1,0 +1,174 @@
+EF Core'da Index
+
+SQL'de Index Yapısı Nedir?
+
+- SQL içerisinde kullanılan İndex kelimesini gösterge, işaret, içindekiler olarak çevirebiliriz.
+SQL index özelliği kitaplardaki içindekiler sayfasına benzer.
+Kitaptaki bir konuyu bulmak için önce içindekiler sayfasına bakılır, konu bulunamazsa tüm kitap sayfalarına bakılır.
+
+- İndex veri tabanı sorgularını hızlandırmak için kullanılır.
+Oluşturulan index tablo veya diğer veri tabanı nesneleri gibi görünmez sadece sorguları hızlandırmak için kullanılır.
+
+Özetle; İndex sorguları hızlandırmak için kullanılan bir özelliktir.
+
+NOT: Veri tabanına yapılan her ekleme, güncelleme ve silme işleminden sonra index yeniden inşa edileceğinden fazla kullanılmayan sütunlar için index oluşturmak 
+veya gereğinden fazla index oluşturmak performans düşürür.
+NOT2: SQL Unique ve SQL Primary Key özellikleri de bir indextir.
+
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Reflection.Emit;
+
+ApplicationDbContext context = new();
+
+#region Index Nedir?
+//Index, bir sütuna dayalı sorgulamaları daha verimli ve performanslı hale getirmek için kullanılan yapıdır.
+#endregion
+#region Index'leme Nasıl Yapılır?
+//PK, FK ve AK olan kolonlar otomatik olarak indexlenir. 
+
+//Indexleme sonucu aşağı tarz sorgulamalarımız daha hızlı, az maliyetli çalışacaktır.
+//context.Employees.Where(e => e.Name == "Faruk");
+
+#region Index Attribute'u
+
+#endregion
+#region HasIndex Metodu
+//Kendi isteğimizle bir kolonu indexlemek için HasIndex kullanabiliriz.
+#endregion
+#endregion
+#region Composite Index
+//Hem Name'i hem Surname'i indexleyip alt satırdaki şarttaki gibi bütünleşik sorgulamalarda daha hızlı sonuçlar elde edebiliriz.
+//context.Employees.Where(e => e.Name == "" || e.Surname == "")
+//fakat bütünleşik dışında tekli-ayrı ayrı Name ya da Surname sorgularında yukarıdaki composite indexleme bir anlam ifade etmez.
+#endregion
+#region Birden Fazla Index Tanımlama
+
+#endregion
+#region Index Uniqueness
+//Index'ler default halleriyle unique değildirler. Fakat index'lemiş olduğumuz kolonu unique hale getirebiliriz.
+#endregion
+#region Index Sort Order - Sıralama Düzeni (EF Core 7.0)
+//Index'lerin kullanıldığı durumlarda sıralama operasyonları önemlidir. Bu index composite index ise bu önem daha da artmaktadır. EF Core 7.0'da gelen bu özellik ile
+//bu sıralamaya müdahele edebiliyoruz. Default olarak Ascending'dir.
+
+#region AllDescending - Attribute
+//Tüm indexlemelerde descending davranışının bütünsel olarak konfigürasyonunu sağlar. Ne kadar index oluşturduysak o kolonlara karşılık hepsine bütün olarak sıralama
+//davranışı belirler.
+#endregion
+#region IsDescending - Attribute
+//Indexleme sürecindeki her bir kolona göre sıralama davranışını hususi olarak ayarlamak istiyorsak kullanılır.
+#endregion
+#region IsDescending Metodu
+//Fluent API'da sıralama davranışı belirleme için kullanılır.
+#endregion
+#endregion
+#region Index Name
+//Index'lere özel olarak isimlendirme yapabiliriz.
+#endregion
+#region Index Filter
+//Index yapılanmasında arkada bir index tablosu oluşturulacaktır ve bu index tablosuna indexlenen verileri taşıyacaktır. Haliyle buradaki verilerin yoğunluğunu düşübilmek ve
+//tablodaki maliyeti azaltabilmek için filtre uygulayabiliriz. HasFilter FluentAPI ile bunu sağlayabiliriz.
+#region HasFilter Metodu
+
+#endregion
+#endregion
+#region Included Columns
+//Sorguyu özelleştirirken index'in dışında kalan bir property'i sorguya ekleyip sonuç olarak elde etmek istersek, bu tarz durumlarda eklenecek ekstra kolonları yani
+//property'leri bildirebilir, bunları da index tablosuna dahil edebiliriz.
+#region IncludeProperties Metodu
+
+#endregion
+#endregion
+
+//Index Attribute'u sadece class seviyesinde kullanılabilir.
+
+//[Index(nameof(Name))] //Employee entity'sine karşılık gelecek tabloda Name property'sine karşılık gelecek kolona bir tane index ata. Name'e özel işlemler için kullan.
+//[Index(nameof(Surname))] //Employee entity'sine karşılık gelecek tabloda Surname property'sine karşılık gelecek kolona bir tane index ata. Surname'e özel işlemler için kullan.
+//[Index(nameof(Name), nameof(Surname))] //Name ve Surname üzerinde sorgulama gerçekleştireceksek kullan.
+//bu üç satırda, üç farklı indexleme yaptık. İlkin Name için, ikinci olarak Surname için ve bu satırda da Name ve Surname için composite bir indexleme yaptık.
+
+//Attribute üzerinden Unique Index;
+//[Index(nameof(Name), IsUnique = true)] //Name property'sini index'le ve unique hale getir.
+
+//Attribute'lar içerisinde kullanılan property'ler ile Index Sort Order - Sıralama Düzeni 
+//[Index(nameof(Name), AllDescending = true)] //Sıralama davranışı bütün kolon içinde Descending olarak güncellendi.
+//[Index(nameof(Name), nameof(Surname), IsDescending = new[] { true, false })] //Name'in ascending, Surname'in de descending davranış sergilemesi için bool dizi üzerinden.
+
+//Index İsimlendirme
+//[Index(nameof(Name), Name = "name_index")]
+class Employee
+{
+    //Id kolonu otomatik olarak index'lenecektir.
+    public int Id { get; set; }
+    //Biz kendi irademizle Name kolonunu index'lemek isteyebiliriz.
+    public string? Name { get; set; }
+    public string? Surname { get; set; }
+    public int Salary { get; set; }
+}
+
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Employee> Employees { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        //Fluent API'da da Index atama işlemlerini yapabiliriz.
+        /*
+        modelBuilder.Entity<Employee>()
+            .HasIndex(x => x.Name); //Index Attribute'u ile yaptığımız işlemin aynısını HasIndex metodu ile yaptık.
+        */
+
+        //Composite olarak Name ve Surname'i indexleyelim.
+        /*
+        modelBuilder.Entity<Employee>() 
+            .HasIndex(x => new { x.Name, x.Surname });
+            //.HasIndex(nameof(Employee.Name), nameof(Employee.Surname)); ya da bu şekilde.
+        */
+
+        //Fluent API üzerinden Unique Index;
+        /*
+        modelBuilder.Entity<Employee>()
+            .HasIndex(x => x.Name)
+            .IsUnique();
+        */
+
+        //Fluent API'da sıralama davranışı belirleme;
+        /*
+        //Name'i Descending olarak atama,
+        modelBuilder.Entity<Employee>()
+            .HasIndex(x => x.Name)
+            .IsDescending();
+        //Name'i Ascending Surname'i Descending atama,
+        modelBuilder.Entity<Employee>()
+            .HasIndex(x => new { x.Name, x.Surname })
+            .IsDescending(true, false);
+        */
+
+        //Fluent API'da Index İsimlendirme - HasDatabaseName ile
+        /*
+        modelBuilder.Entity<Employee>()
+            .HasIndex(x => x.Name)
+            .HasDatabaseName("name_index");
+        */
+
+        //Filtre işlemi;
+        //Name is null olmayanlar index'lensin.
+        //Şarta uymayan değerler index tablosuna alınmayacağından performans artışı olacaktır.
+        /*
+        modelBuilder.Entity<Employee>()
+            .HasIndex(x => x.Name)
+            .HasFilter("[NAME] IS NOT NULL");
+        */
+
+        //Included Columns işlemleri Fluent API ile kullanılır.
+        modelBuilder.Entity<Employee>()
+            .HasIndex(x => new { x.Name, x.Surname }) //index'in composite olması şart değil.
+            .IncludeProperties(x => x.Salary);
+        //burada yaptığımız çalışmada HasIndex ile bildirmiş olduğumuz composite index'i kullanırken bir yandan da Salary'i index tablosuna eklediğimizden dolayı
+        //hem Name-Surname hem Salary kullandığımız sorgularda verimli ve performanslı bir çalışma sergilemiş olacağız.
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.UseSqlServer("Server=PC\\SQLEXPRESS;Database=ApplicationDb;User ID=SA;Password=1;TrustServerCertificate=True");
+    }
+}

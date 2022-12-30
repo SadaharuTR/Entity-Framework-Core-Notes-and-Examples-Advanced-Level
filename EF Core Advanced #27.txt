@@ -1,0 +1,162 @@
+EF Core 7 Yenilikleri
+
+Bulk Update ve Delete İşlemleri
+
+using Microsoft.EntityFrameworkCore;
+using System.Reflection;
+
+ApplicationDbContext context = new();
+
+#region EF Core 7 Öncesi Toplu Güncelleme
+
+/*var persons = await context.Persons.Where(p => p.PersonId > 5).ToListAsync();
+foreach (var person in persons)
+{
+    person.Name = $"{person.Name}...";
+}
+await context.SaveChangesAsync();
+*/
+#endregion
+//Önce veriyi elde et sonra güncelle/sil.
+#region EF Core 7 Öncesi Toplu Silme
+/*
+var persons = await context.Persons.Where(p => p.PersonId > 5).ToListAsync();
+context.RemoveRange(persons);
+await context.SaveChangesAsync();
+*/
+#endregion
+
+#region ExecuteUpdate
+//Tek satırda elimizdeki hedef veri üzerinde güncelleme işlemini gerçekleştirmiş olduk.
+
+//await context.Persons.Where(p => p.PersonId > 3).ExecuteUpdateAsync(p => p.SetProperty(p => p.Name, v => v.Name + " yeni"));
+
+//await context.Persons.Where(p => p.PersonId > 3).ExecuteUpdateAsync(p => p.SetProperty(p => p.Name, v => $"{v.Name} yeni"));
+//String interpolation kullanmaya çalışırsak expression yapılanmasında çözülemeyeceğinden hata verecektir. ExecuteUpdateAsync kullanıyorsak String Interpolation kullanmayalım.
+#endregion
+
+#region ExecuteDelete
+
+//await context.Persons.Where(p => p.PersonId > 3).ExecuteDeleteAsync(); //Aynı şekilde herhangi bir döngüye girmeden, ekstra işleme tutmadan tek satırda silme işlemi yapılabilir.
+
+#endregion
+
+//ExecuteUpdate ve ExecuteDelete fonksiyonları ile bulk(toplu) veri güncelleme ve silme işlemleri gerçekleştirirken SaveChanges() fonksiyonunu çağırmak gerekmez. 
+//Çünkü bu fonksiyonlar Execute... fonksiyonlarıdır. Yani direkt verittabanına fiziksel etkide bulunurlar.
+
+//Eğer ki istyorsanız transaction kontrolünü ele alarak bu fonksiyonların işlevlerini de süreçte kontrol edebilirsiniz.
+
+public class Person
+{
+    public int PersonId { get; set; }
+    public string Name { get; set; }
+}
+class ApplicationDbContext : DbContext
+{
+    public DbSet<Person> Persons { get; set; }
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder
+            .UseSqlServer("Server = PC\\SQLEXPRESS; Database = ApplicationDb; User ID = SA; Password = 1; TrustServerCertificate = True");
+    }
+}
+
+--------------------------------
+
+EF Core'da Entity Splitting
+
+
+
+using Microsoft.EntityFrameworkCore;
+
+ApplicationDbContext context = new();
+
+#region Entity Splitting
+//Birden fazla fiziksel tabloyu Entity Framework Core kısmında tek bir entity ile temsil etmemizi sağlayan bir özelliktir.
+//Tek bir tabloya bağlı entity'lerden ziyade birden fazla tabloyla verisel işlemleri gerçekleştiren tekil entity'ler oluşturmamızı sağlar.
+#endregion
+
+//Bir adet Person'a ait adı-soyad bilgisini taşıyan Persons; Adres bilgilerini taşıyan Addresses ve Telefon No bilgisini taşıyan PhoneNumbers tablolarını gözlemleriz.
+//EF Core 7 ile böyle bir yapılanma artık modellenebilir.
+#region Örnek
+
+#region Veri Eklerken
+//DbContext'te gerekli ayarlar çekildikten sonra veri eklerken artık ilgili property'leri ilişkilendirildikleri tablolara gönderecek ve onlara göre insert oluşturacaktır.
+Person person = new()
+{
+    Name = "Serpil",
+    Surname = "Atagüce",
+    City = "Ankara",
+    Country = "Türkiye",
+    PhoneNumber = "1234567890",
+    PostCode = "1234567890",
+    Street = "..."
+};
+
+//await context.Persons.AddAsync(person);
+//await context.SaveChangesAsync();
+#endregion
+
+#region Veri Okurken
+//Aynı şekilde sorgulama sürecinde bir Persons nesnesini elde etmek istersek ilgili tablolardan sorgulama yapıp bu nesneyi kümülatif olarak sunacaktır.
+person = await context.Persons.FindAsync(2);
+
+Console.WriteLine();
+#endregion
+#endregion
+
+public class Person
+{
+    #region Persons Tablosu
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public string Surname { get; set; }
+    #endregion
+	
+    #region PhoneNumbers Tablosu
+    public string? PhoneNumber { get; set; }
+    #endregion
+	
+    #region Addresses Tablosu
+    public string Street { get; set; }
+    public string City { get; set; }
+    public string? PostCode { get; set; }
+    public string Country { get; set; }
+    #endregion
+	//Konf. sürecinde belirtebilmek için OnModelCreating de;
+}
+class ApplicationDbContext : DbContext //DbContext nesnesine geliriz.
+{
+    public DbSet<Person> Persons { get; set; }
+	
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Person>(entityBuilder => //ilgili entity'e modelBuilder üzerinden generic olarak girelim.
+        {
+            entityBuilder.ToTable("Persons") //ToTable ile ana tabloyu bildirelim. Ana tablo Persons tablosudur.
+                .SplitToTable("PhoneNumbers", tableBuilder => //Ayrıştırılacak kolonları-property'leri bildirelim. İlk parametrede PhoneNumbers tablosu oluştur,
+                {
+                    tableBuilder.Property(person => person.Id).HasColumnName("PersonId"); //ilişkinin kurulabilmesi için Id kolonunu kullan.
+                    tableBuilder.Property(person => person.PhoneNumber); //bu tabloya Person entity'si içerisindeki PhoneNumber'ı ver.
+                })
+                .SplitToTable("Addresses", tableBuilder => //aynı şekilde Addresses için de geçerli.
+                {
+                    tableBuilder.Property(person => person.Id).HasColumnName("PersonId");
+                    tableBuilder.Property(person => person.Street);
+                    tableBuilder.Property(person => person.City);
+                    tableBuilder.Property(person => person.PostCode);
+                    tableBuilder.Property(person => person.Country);
+                });
+				//Persons ana tablosuyla Addresses ve PhoneNumbers tablosunu ilişkilendirmiş ve Person entity'si üzerinden konf. edilebilir hale getirmiş oluyoruz.
+        });
+    }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder
+            optionsBuilder.UseSqlServer("Server = PC\\SQLEXPRESS; Database = ApplicationDb; User ID = SA; Password = 1; TrustServerCertificate = True")
+    }
+}
